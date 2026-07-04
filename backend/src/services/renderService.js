@@ -649,7 +649,8 @@ async function renderWithRemotion(jobId, job, scenes) {
 
   let composition;
   try {
-    composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps });
+    const browserExecutable = process.env.CHROMIUM_EXECUTABLE_PATH || undefined;
+    composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable });
     console.log(`[RenderService] Compositie: ${composition.durationInFrames} frames, ${composition.width}x${composition.height}`);
   } catch (compErr) {
     console.error('[RenderService] ❌ selectComposition mislukt:\n', compErr.stack || compErr.message);
@@ -660,7 +661,7 @@ async function renderWithRemotion(jobId, job, scenes) {
     await renderMedia({
       composition, serveUrl: bundled, codec: 'h264',
       outputLocation: outputFile, inputProps,
-      pixelFormat: 'yuv420p', crf: 23,
+      pixelFormat: 'yuv420p', crf: 23, browserExecutable,
       onProgress: ({ progress }) => {
         if (Math.round(progress * 100) % 10 === 0) {
           console.log(`[RenderService] Render voortgang: ${Math.round(progress * 100)}%`);
