@@ -57,6 +57,8 @@ interface VfxSettings {
   filmGrain:        boolean;
   zoomPunch?:       boolean;
   cameraShake?:     boolean;
+  grainIntensity?:  number; // 1 = standaard, 2 = zwaar (noir), 0.5 = licht
+  shakeIntensity?:  number; // 1 = standaard, 2 = intens (noir), 0 = uit
 }
 
 const DEFAULT_VFX: VfxSettings = {
@@ -171,8 +173,9 @@ export function VaultMotionVideo({ scenes, audioUrl, musicUrl, sfxUrl, wordTimin
       accShake += dur;
     }
     const decay  = Math.exp(-localFrame * 0.08);
-    cameraShakeX = Math.sin(localFrame * 0.7) * 2 * decay;
-    cameraShakeY = Math.sin(localFrame * 1.1) * 1.5 * decay;
+    const shakeMul = vfx.shakeIntensity ?? 1;
+    cameraShakeX = Math.sin(localFrame * 0.7) * 2 * decay * shakeMul;
+    cameraShakeY = Math.sin(localFrame * 1.1) * 1.5 * decay * shakeMul;
   }
 
   return (
@@ -198,6 +201,8 @@ export function VaultMotionVideo({ scenes, audioUrl, musicUrl, sfxUrl, wordTimin
           transform: (vfx.cameraShake && isEpic)
             ? `translateX(${cameraShakeX}px) translateY(${cameraShakeY}px)`
             : undefined,
+          // Noir: hoog contrast zwart-wit; het accent blijft via de theme-kleuren zichtbaar
+          filter: theme?.label === 'noir' ? 'grayscale(0.92) contrast(1.25)' : undefined,
         }}
       >
         <TransitionSeries>
@@ -258,7 +263,7 @@ export function VaultMotionVideo({ scenes, audioUrl, musicUrl, sfxUrl, wordTimin
       )}
 
       {/* 3. Film grain overlay — noise2D-gedreven, overlay blend mode */}
-      <FilmGrainOverlay enabled={vfx.filmGrain} />
+      <FilmGrainOverlay enabled={vfx.filmGrain} intensity={vfx.grainIntensity ?? 1} />
 
       {/* ── Subtitles (boven VFX overlays) ────────────────────────────────── */}
       {subtitleSettings?.enabled && wordTimings?.length > 0 && (

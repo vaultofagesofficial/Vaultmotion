@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { OUTPUTS_DIR } = require('./paths');
+const { OUTPUTS_DIR, JOBS_FILE } = require('./paths');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -19,6 +19,34 @@ const corsOrigins = process.env.CORS_ORIGINS
   : ['http://localhost:5174', 'http://localhost:3001'];
 app.use(cors({ origin: corsOrigins }));
 app.use(express.json({ limit: '10mb' }));
+
+// Opt-in API-auth: als VAULTMOTION_API_KEY gezet is, vereist elke /api route
+// (behalve /api/health) een x-api-key header. Zonder env var blijft alles open (lokaal).
+const API_KEY = process.env.VAULTMOTION_API_KEY;
+if (API_KEY) {
+  app.use('/api', (req, res, next) => {
+    if (req.path === '/health') return next();
+    if (req.headers['x-api-key'] === API_KEY) return next();
+    res.status(401).json({ error: 'Ongeldige of ontbrekende API key' });
+  });
+  console.log('🔒 API-key beveiliging actief (VAULTMOTION_API_KEY)');
+} else {
+  console.log('⚠️  Geen VAULTMOTION_API_KEY ingesteld — API is onbeveiligd (ok voor lokaal, stel in op Railway)');
+}
+
+// Eenvoudige in-memory rate limiter: max 120 requests per minuut per IP
+const rateBuckets = new Map();
+app.use('/api', (req, res, next) => {
+  const now = Date.now();
+  const key = req.ip;
+  const bucket = rateBuckets.get(key) || { count: 0, reset: now + 60_000 };
+  if (now > bucket.reset) { bucket.count = 0; bucket.reset = now + 60_000; }
+  bucket.count++;
+  rateBuckets.set(key, bucket);
+  if (rateBuckets.size > 10_000) rateBuckets.clear();
+  if (bucket.count > 120) return res.status(429).json({ error: 'Te veel verzoeken — probeer over een minuut opnieuw' });
+  next();
+});
 
 // Statische output bestanden serveren
 app.use('/outputs', express.static(outputsDir));
@@ -54,8 +82,7 @@ app.get('/api/health', (req, res) => {
 
 // Reset scènes die vastliepen tijdens een vorige server-sessie
 function resetStuckPollingScenes() {
-  // server.js zit in backend/src/ → jobs.json zit in backend/ → één niveau omhoog
-  const jobsFile = path.resolve(__dirname, '../jobs.json');
+  const jobsFile = JOBS_FILE;
   console.log(`♻️  [Startup] Checking stuck scenes in: ${jobsFile}`);
   try {
     if (!fs.existsSync(jobsFile)) {

@@ -15,7 +15,7 @@ interface SubtitleSettings {
   enabled:        boolean;
   fontSize:       'klein' | 'normaal' | 'groot';
   highlightColor: string;
-  position:       'onder' | 'midden';
+  position:       'onder' | 'midden' | 'boven';
 }
 
 interface Props {

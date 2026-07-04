@@ -3,15 +3,16 @@ import { AbsoluteFill, useCurrentFrame } from 'remotion';
 
 interface Props {
   enabled?: boolean;
+  intensity?: number; // 1 = standaard, 2 = zwaar (noir), 0.5 = licht
 }
 
-export function FilmGrainOverlay({ enabled = true }: Props) {
+export function FilmGrainOverlay({ enabled = true, intensity = 1 }: Props) {
   const frame = useCurrentFrame();
   if (!enabled) return null;
 
-  // noise2D drives per-frame opacity variation — range: ~0.038–0.062
+  // noise2D drives per-frame opacity variation — range: ~0.038–0.062 (×intensity)
   const variation = noise2D('g', frame * 0.07, 0);
-  const opacity   = 0.05 + variation * 0.012;
+  const opacity   = (0.05 + variation * 0.012) * intensity;
 
   // seed changes every frame → different grain pattern per frame
   const seed = frame % 97;

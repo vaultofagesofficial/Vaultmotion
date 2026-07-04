@@ -483,6 +483,29 @@ export default function JobDetailPage() {
             </div>
           )}
 
+          {job.status === 'completed' && job.thumbnail_options?.length > 0 && (
+            <div className="card">
+              <h3 className="font-semibold text-white mb-3 text-sm">🖼️ {t('job.thumbs.title', 'Auto-thumbnails')} ({job.thumbnail_options.length})</h3>
+              <div className="grid grid-cols-1 gap-2">
+                {job.thumbnail_options.map((url, i) => (
+                  <div key={url} className="relative group rounded-lg overflow-hidden border border-dark-600">
+                    <img src={url} alt={`Thumbnail ${i + 1}`} className="w-full aspect-video object-cover" />
+                    <a
+                      href={url}
+                      download={`${(job.title || job.id).replace(/[^a-zA-Z0-9\s_-]/g, '').replace(/\s+/g, '_')}_thumb_${i + 1}.jpg`}
+                      className="absolute bottom-2 right-2 flex items-center gap-1 text-xs px-2 py-1 rounded bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Download size={11} /> {t('job.thumbs.download', 'Download')}
+                    </a>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] mt-2" style={{ color: '#6b6b6b' }}>
+                {t('job.thumbs.hint', 'Tip: upload je favoriet in VaultBoost → Thumbnail → A/B Tracker om de CTR te vergelijken.')}
+              </p>
+            </div>
+          )}
+
           {job.status === 'completed' && job.video_url && (
             <div className="card">
               <h3 className="font-semibold text-white mb-3 text-sm">{t('job.video.title', 'Video')}</h3>

@@ -4,14 +4,18 @@ const path    = require('path');
 const fs      = require('fs');
 const router  = express.Router();
 const { startRenderJob, getJob, getAllJobs, updateJob, triggerRemotionRender, continueFromEditing, retryFailedScenes, retryRender } = require('../services/renderService');
+const { OUTPUTS_DIR } = require('../paths');
 
-const THUMBNAILS_DIR = path.resolve(__dirname, '../../../outputs/thumbnails');
+const THUMBNAILS_DIR = path.join(OUTPUTS_DIR, 'thumbnails');
 if (!fs.existsSync(THUMBNAILS_DIR)) fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
+
+// Sanitize jobId zodat een gemanipuleerde URL (bv. ..%2F) nooit buiten de map schrijft
+const safeJobId = (id) => String(id || '').replace(/[^a-zA-Z0-9_-]/g, '');
 
 const thumbnailUpload = multer({
   storage: multer.diskStorage({
     destination: THUMBNAILS_DIR,
-    filename: (req, _file, cb) => cb(null, `${req.params.jobId}.jpg`),
+    filename: (req, _file, cb) => cb(null, `${safeJobId(req.params.jobId)}.jpg`),
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
@@ -70,6 +74,7 @@ router.get('/:jobId', (req, res) => {
       title: job.title,
       id: job.id,
       thumbnail_url: job.thumbnail_url || null,
+      thumbnail_options: job.thumbnail_options || [],
       partial_failure: job.partial_failure || 0,
       youtube_url: job.youtube_url || null,
       youtube_shorts_url: job.youtube_shorts_url || null,
@@ -224,7 +229,7 @@ router.put('/:jobId/scenes', (req, res) => {
     const job = getJob(req.params.jobId);
     if (!job) return res.status(404).json({ error: 'Job niet gevonden' });
 
-    const { scenes, subtitle_settings, voice_key, music_url } = req.body;
+    const { scenes, subtitle_settings, voice_key, music_url, speaking_style } = req.body;
     if (!Array.isArray(scenes) || scenes.length === 0) {
       return res.status(400).json({ error: 'scenes array verplicht en mag niet leeg zijn' });
     }
@@ -233,6 +238,7 @@ router.put('/:jobId/scenes', (req, res) => {
     if (subtitle_settings) updates.subtitle_settings = subtitle_settings;
     if (voice_key)        updates.voice_key          = voice_key;
     if (music_url)        updates.music_url          = music_url;
+    if (speaking_style)   updates.speaking_style     = speaking_style;
 
     updateJob(req.params.jobId, updates);
     res.json({ ok: true, scene_count: scenes.length });

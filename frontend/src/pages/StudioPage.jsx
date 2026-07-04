@@ -101,6 +101,47 @@ const FONT_SIZES = [
   { value: 'groot',   key: 'studio.subtitle.size.groot',   fallback: 'Groot'   },
 ];
 
+const RENDER_STYLE_OPTIONS = [
+  { value: 'ai-cinematic',      labelKey: 'studio.render_style.ai',       descKey: 'studio.render_style.ai_desc',       labelFb: '🎬 AI-cinematic', descFb: 'Kling AI video achtergronden' },
+  { value: 'ai-image',          labelKey: 'studio.render_style.ai_image', descKey: 'studio.render_style.ai_image_desc', labelFb: '🖼️ AI-beeld',     descFb: 'Stilstaand AI-beeld + Ken Burns zoom' },
+  { value: '2d',                labelKey: 'studio.render_style.2d',       descKey: 'studio.render_style.2d_desc',       labelFb: '📐 2D-gratis',    descFb: 'Code-only, geen AI credits' },
+  { value: 'simple',            labelKey: 'studio.render_style.simple',   descKey: 'studio.render_style.simple_desc',   labelFb: '🎯 Simpel',       descFb: 'T2I + I2V per scène, enkel ken_burns' },
+  { value: 'hybrid',            labelKey: 'studio.render_style.hybrid',   descKey: 'studio.render_style.hybrid_desc',   labelFb: '⚡ Hybride',      descFb: 'Mix KIE + 2D op basis van kwaliteitsschuif' },
+  { value: 'cinematic_noir',    labelKey: 'studio.render_style.noir',     descKey: 'studio.render_style.noir_desc',     labelFb: '🎞️ Noir',        descFb: 'Zwart-wit hoog contrast, zware grain, intense shake' },
+  { value: 'documentary',       labelKey: 'studio.render_style.docu',     descKey: 'studio.render_style.docu_desc',     labelFb: '📽️ Documentary', descFb: 'Rustige cuts, neutrale kleuren, tekstoverlays' },
+  { value: 'social_media_fast', labelKey: 'studio.render_style.social',   descKey: 'studio.render_style.social_desc',   labelFb: '📱 Social Fast',  descFb: 'Max 2s per scène, grote tekst, neon (TikTok-stijl)' },
+  { value: 'luxury',            labelKey: 'studio.render_style.luxury',   descKey: 'studio.render_style.luxury_desc',   labelFb: '👑 Luxury',       descFb: 'Slow pacing, goud/zwart, elegante typografie' },
+];
+
+// Kostenmatrix: credits/tijd/kwaliteit per stijl (en per hybrid-intensiteit)
+const COST_MATRIX = {
+  'ai-cinematic':      { credits: '~800',  time: '~15-25 min', stars: 5, advice: 'Voor je allerbeste video\'s' },
+  'ai-image':          { credits: '~200',  time: '~8-12 min',  stars: 3, advice: 'Goede middenweg met AI-beelden' },
+  '2d':                { credits: '0',     time: '~3-5 min',   stars: 2, advice: 'Ideaal voor dagelijkse content, gratis' },
+  'simple':            { credits: '~600',  time: '~12-20 min', stars: 4, advice: 'Consistente AI-look per scène' },
+  'hybrid:low':        { credits: '~150',  time: '~6-10 min',  stars: 3, advice: 'Beste prijs/kwaliteit voor dagelijkse posts' },
+  'hybrid:medium':     { credits: '~400',  time: '~10-16 min', stars: 4, advice: 'Voor belangrijke video\'s' },
+  'hybrid:high':       { credits: '~800',  time: '~15-25 min', stars: 5, advice: 'Voor je beste video\'s' },
+  'cinematic_noir':    { credits: '~150-800', time: '~6-25 min', stars: 4, advice: 'Mysteries, true crime, drama' },
+  'documentary':       { credits: '0',     time: '~3-5 min',   stars: 3, advice: 'Educatieve en feitelijke content' },
+  'social_media_fast': { credits: '0',     time: '~3-5 min',   stars: 3, advice: 'TikTok/Shorts met hoge energie' },
+  'luxury':            { credits: '0',     time: '~3-5 min',   stars: 3, advice: 'Lifestyle, financiën, premium merken' },
+};
+
+function CostMatrix({ renderStyle, hybridIntensity }) {
+  const key = renderStyle === 'hybrid' ? `hybrid:${hybridIntensity}` : renderStyle;
+  const c = COST_MATRIX[key];
+  if (!c) return null;
+  return (
+    <div className="mb-4 flex items-center gap-4 flex-wrap px-4 py-2.5 rounded-xl border border-dark-700 bg-dark-800 text-xs">
+      <span className="text-gray-400">💳 Credits: <span className="text-amber-400 font-semibold">{c.credits}</span></span>
+      <span className="text-gray-400">⏱️ Tijd: <span className="text-white font-semibold">{c.time}</span></span>
+      <span className="text-gray-400">Kwaliteit: <span className="text-yellow-400">{'★'.repeat(c.stars)}<span className="text-gray-600">{'★'.repeat(5 - c.stars)}</span></span></span>
+      <span className="text-gray-500 italic">{c.advice}</span>
+    </div>
+  );
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function StudioPage() {
@@ -311,14 +352,8 @@ export default function StudioPage() {
       {studioTab === 'full' && (<>
 
       {/* RENDER STYLE TOGGLE */}
-      <div className="flex gap-2 mb-4 p-1 bg-dark-800 border border-dark-700 rounded-xl w-fit">
-        {[
-          { value: 'ai-cinematic', labelKey: 'studio.render_style.ai',       descKey: 'studio.render_style.ai_desc',       labelFb: '🎬 AI-cinematic', descFb: 'Kling AI video achtergronden' },
-          { value: 'ai-image',     labelKey: 'studio.render_style.ai_image', descKey: 'studio.render_style.ai_image_desc', labelFb: '🖼️ AI-beeld',     descFb: 'Stilstaand AI-beeld + Ken Burns zoom' },
-          { value: '2d',           labelKey: 'studio.render_style.2d',       descKey: 'studio.render_style.2d_desc',       labelFb: '📐 2D-gratis',    descFb: 'Code-only, geen AI credits' },
-          { value: 'simple',       labelKey: 'studio.render_style.simple',   descKey: 'studio.render_style.simple_desc',   labelFb: '🎯 Simpel',       descFb: 'T2I + I2V per scène, enkel ken_burns' },
-          { value: 'hybrid',       labelKey: 'studio.render_style.hybrid',   descKey: 'studio.render_style.hybrid_desc',   labelFb: '⚡ Hybride',      descFb: 'Mix KIE + 2D op basis van kwaliteitsschuif' },
-        ].map(rs => (
+      <div className="flex gap-2 mb-2 p-1 bg-dark-800 border border-dark-700 rounded-xl w-fit flex-wrap">
+        {RENDER_STYLE_OPTIONS.map(rs => (
           <button
             key={rs.value}
             onClick={() => setRenderStyle(rs.value)}
@@ -332,6 +367,9 @@ export default function StudioPage() {
           </button>
         ))}
       </div>
+
+      {/* KOSTENMATRIX — zichtbaar vóór de render start */}
+      <CostMatrix renderStyle={renderStyle} hybridIntensity={hybridIntensity} />
 
       {/* HYBRID INTENSITEIT */}
       {renderStyle === 'hybrid' && (

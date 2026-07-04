@@ -75,9 +75,26 @@ function getAllJobs() {
 
 // ── Pipeline ────────────────────────────────────────────────────────────────
 
+// Visual presets: nieuwe render-stijlen die op een bestaande pipeline draaien
+// met een eigen kleurthema, pacing en VFX-profiel.
+const VISUAL_PRESETS = {
+  cinematic_noir:    { base: 'hybrid', color_theme: 'noir',    pacing: 'normal', vfx: { grainIntensity: 2,   shakeIntensity: 2 } },
+  documentary:       { base: '2d',     color_theme: 'neutral', pacing: 'slow',   vfx: { grainIntensity: 0.5, shakeIntensity: 0 } },
+  social_media_fast: { base: '2d',     color_theme: 'neon',    pacing: 'fast',   vfx: { grainIntensity: 0,   shakeIntensity: 1 } },
+  luxury:            { base: '2d',     color_theme: 'luxury',  pacing: 'slow',   vfx: { grainIntensity: 0.5, shakeIntensity: 0 } },
+};
+
 async function startRenderJob({ script, title, style, mode, duration, workspace_id, subtitleSettings, voiceKey, vaultboost_meta, render_style, format, adaptive_strategy, preview, hybrid_intensity }) {
   const jobId = uuidv4();
   const resolvedMode = mode || (style === 'epic' ? 'epic' : 'documentary');
+
+  // Preset-vertaling: cinematic_noir/documentary/social_media_fast/luxury → basis-pipeline + preset-metadata
+  let visualPreset = null;
+  if (VISUAL_PRESETS[render_style]) {
+    visualPreset = render_style;
+    render_style = VISUAL_PRESETS[visualPreset].base;
+    console.log(`[RenderService] Visual preset '${visualPreset}' → pipeline '${render_style}'`);
+  }
 
   const job = {
     id: jobId,
@@ -88,6 +105,8 @@ async function startRenderJob({ script, title, style, mode, duration, workspace_
     format:      format || 'narrative',
     duration:    duration || 60,
     render_style:     render_style || 'ai-cinematic',
+    visual_preset:    visualPreset,
+    ...(visualPreset ? { color_theme: VISUAL_PRESETS[visualPreset].color_theme } : {}),
     hybrid_intensity: hybrid_intensity || 'low',
     adaptive_strategy: adaptive_strategy !== false,
     voice_key:   voiceKey || 'nl_female',
@@ -143,12 +162,13 @@ async function runRenderPipeline(jobId, job) {
       return;
     }
 
-    const { scenes, styleAnchor, validationWarnings, templateDecisions, colorTheme } = await analyzeScript(job.script, job.style, job.duration, job.render_style, job.format || 'narrative', job.adaptive_strategy !== false);
+    const { scenes, styleAnchor, validationWarnings, templateDecisions, colorTheme } = await analyzeScript(job.script, job.style, job.duration, job.render_style, job.format || 'narrative', job.adaptive_strategy !== false, job.visual_preset ? VISUAL_PRESETS[job.visual_preset]?.pacing : null);
     updateJob(jobId, {
       scenes, style_anchor: styleAnchor, status: 'editing', progress: 20,
       ...(validationWarnings?.length  > 0 ? { validation_warnings:  validationWarnings  } : {}),
       ...(templateDecisions?.length   > 0 ? { template_decisions:   templateDecisions   } : {}),
-      ...(colorTheme ? { color_theme: colorTheme } : {}),
+      // Preset-kleurthema heeft voorrang op het thema uit de analyse
+      ...(colorTheme && !job.visual_preset ? { color_theme: colorTheme } : {}),
     });
 
     // Pipeline pauzeren — gebruiker bewerkt scènes via SceneEditor
@@ -200,7 +220,7 @@ async function runAfterEditing(jobId, job) {
 
     if (process.env.ELEVENLABS_API_KEY) {
       try {
-        const result = await generateVoiceOver(ttsScript, jobId, job.voice_key || 'nl_female');
+        const result = await generateVoiceOver(ttsScript, jobId, job.voice_key || 'nl_female', job.speaking_style || 'neutral');
         audioUrl     = result.audioUrl;
         wordTimings  = result.wordTimings || null; // seconden-gebaseerd van ElevenLabs
         updateJob(jobId, { audio_url: audioUrl, progress: 40 });
@@ -287,6 +307,14 @@ async function runAfterEditing(jobId, job) {
       finalScenes = [...scenes];
 
       await Promise.allSettled(scenes.map(async (scene, idx) => {
+        // Door gebruiker gemarkeerd als code-only (kostenbesparing)
+        if (scene.skip_kie) {
+          const updates = { background_video_url: null, template: 'text_focus_2d', kling_status: 'skipped' };
+          finalScenes[idx] = { ...finalScenes[idx], ...updates };
+          const jobs = loadJobs();
+          if (jobs[jobId]?.scenes?.[idx]) { jobs[jobId].scenes[idx] = { ...jobs[jobId].scenes[idx], ...updates }; saveJobs(jobs); }
+          return;
+        }
         try {
           updateJob(jobId, (() => {
             const j = loadJobs();
@@ -343,6 +371,11 @@ async function runAfterEditing(jobId, job) {
           if (intensity === 'high' || relIdx % 2 === 0) kieIndices.add(absIdx);
         });
       }
+
+      // Gebruiker kan per scène 'skip_kie' zetten in de Scene Editor (kostenbesparing)
+      scenes.forEach((s, i) => {
+        if (s.skip_kie) kieIndices.delete(i);
+      });
 
       const kieCount = kieIndices.size;
       console.log(`[Pipeline ${jobId}] Hybrid ${intensity}: ${kieCount} KIE-scènes van ${scenes.length} totaal — indices: [${[...kieIndices].join(',')}]`);
@@ -490,6 +523,7 @@ async function runRetry(jobId, scenes, mode) {
   const outputFile = await renderWithRemotion(jobId, getJob(jobId), finalScenes);
   const videoUrl   = `/outputs/${path.basename(outputFile)}`;
   updateJob(jobId, { status: 'completed', progress: 100, video_url: videoUrl, file_path: outputFile, completed_at: new Date().toISOString() });
+  generateAutoThumbnails(jobId).catch(e => console.warn(`[AutoThumb ${jobId}]`, e.message));
 }
 
 async function retryRender(jobId) {
@@ -518,15 +552,58 @@ async function triggerRemotionRender(jobId) {
     const videoUrl   = `/outputs/${path.basename(outputFile)}`;
     updateJob(jobId, { status: 'completed', progress: 100, video_url: videoUrl, file_path: outputFile, completed_at: new Date().toISOString() });
     if (job.workspace_id) await notifyVaultBoost(job.workspace_id, videoUrl, outputFile);
+    generateAutoThumbnails(jobId).catch(e => console.warn(`[AutoThumb ${jobId}]`, e.message));
   } catch (err) {
     updateJob(jobId, { status: 'failed', error: err.message });
     throw err;
   }
 }
 
+// ── Auto-thumbnail generator: 3 varianten via grok-imagine na elke render ──
+async function generateAutoThumbnails(jobId) {
+  if (!process.env.KIE_API_KEY) return;
+  const job = getJob(jobId);
+  if (!job || job.thumbnail_options?.length) return;
+
+  const { generateImageForScene } = require('./kieService');
+  const firstVisual = (job.scenes || []).find(s => s.visual_focus)?.visual_focus || '';
+  const base = `YouTube thumbnail, bold cinematic composition, high contrast, dramatic lighting, no text, 16:9. Topic: "${job.title}". ${firstVisual ? `Key visual: ${firstVisual}.` : ''}`;
+  const prompts = [
+    `${base} Epic wide establishing shot.`,
+    `${base} Extreme close-up with intense mood.`,
+    `${base} Mysterious silhouette, single strong light source.`,
+  ];
+
+  const thumbsDir = path.join(OUTPUTS_DIR, 'thumbnails');
+  fs.mkdirSync(thumbsDir, { recursive: true });
+  const axios = require('axios');
+  const urls = [];
+
+  for (let i = 0; i < prompts.length; i++) {
+    try {
+      const cdnUrl = await generateImageForScene(prompts[i], 'grok-imagine/text-to-image', '16:9');
+      const filePath = path.join(thumbsDir, `${jobId}-auto-${i + 1}.jpg`);
+      const img = await axios.get(cdnUrl, { responseType: 'arraybuffer', timeout: 60000 });
+      fs.writeFileSync(filePath, Buffer.from(img.data));
+      urls.push(`/outputs/thumbnails/${jobId}-auto-${i + 1}.jpg`);
+      console.log(`[AutoThumb ${jobId}] Variant ${i + 1} klaar (${Math.round(img.data.byteLength / 1024)}KB)`);
+    } catch (e) {
+      console.warn(`[AutoThumb ${jobId}] Variant ${i + 1} mislukt: ${e.message}`);
+      if (e.message.includes('402')) break; // geen credits — stop meteen
+    }
+  }
+  if (urls.length) updateJob(jobId, { thumbnail_options: urls });
+}
+
 // ── Audio duur via ffprobe ───────────────────────────────────────────────────
 
-const FFPROBE_PATH = 'C:\\Users\\kurtc\\Documents\\Vault of ages\\backend\\node_modules\\@remotion\\compositor-win32-x64-msvc\\ffprobe.exe';
+const FFPROBE_PATH = (() => {
+  if (process.env.FFPROBE_PATH) return process.env.FFPROBE_PATH;
+  try { return require('@ffprobe-installer/ffprobe').path; } catch {}
+  const legacyWin = 'C:\\Users\\kurtc\\Documents\\Vault of ages\\backend\\node_modules\\@remotion\\compositor-win32-x64-msvc\\ffprobe.exe';
+  if (process.platform === 'win32' && fs.existsSync(legacyWin)) return legacyWin;
+  return 'ffprobe'; // hoop op PATH (Railway nixpacks)
+})();
 
 function getAudioDurationSec(audioFilePath) {
   try {
@@ -595,10 +672,22 @@ async function renderWithRemotion(jobId, job, scenes) {
     : (job.duration || 60) * FPS;
 
   let colorThemeObj = null;
-  if (job.render_style === '2d') {
-    const COLOR_THEMES = { default: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'default' }, warm: { primary: '#e53e3e', accent: '#f6ad55', bg: '#180a00', text: '#ffffff', label: 'warm' }, cool: { primary: '#3b82f6', accent: '#93c5fd', bg: '#07101f', text: '#ffffff', label: 'cool' }, neutral: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'neutral' }, dark: { primary: '#c53030', accent: '#00d4ff', bg: '#0f0f14', text: '#ffffff', label: 'dark' } };
+  if (job.render_style === '2d' || job.visual_preset) {
+    const COLOR_THEMES = {
+      default: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'default' },
+      warm:    { primary: '#e53e3e', accent: '#f6ad55', bg: '#180a00', text: '#ffffff', label: 'warm' },
+      cool:    { primary: '#3b82f6', accent: '#93c5fd', bg: '#07101f', text: '#ffffff', label: 'cool' },
+      neutral: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'neutral' },
+      dark:    { primary: '#c53030', accent: '#00d4ff', bg: '#0f0f14', text: '#ffffff', label: 'dark' },
+      noir:    { primary: '#e53e3e', accent: '#e53e3e', bg: '#000000', text: '#f5f5f5', label: 'noir' },
+      neon:    { primary: '#e53e3e', accent: '#39ff14', bg: '#0a0014', text: '#ffffff', label: 'neon' },
+      luxury:  { primary: '#d4af37', accent: '#d4af37', bg: '#0d0d0d', text: '#f8f5ec', label: 'luxury' },
+    };
     colorThemeObj = COLOR_THEMES[job.color_theme] || COLOR_THEMES['default'];
   }
+
+  // Preset-specifieke VFX (grain/shake intensiteit)
+  const presetVfx = job.visual_preset ? (VISUAL_PRESETS[job.visual_preset]?.vfx || {}) : {};
 
   const toAbsolute  = (url) => url ? (url.startsWith('http') ? url : `${SERVER_BASE_URL}${url}`) : null;
 
@@ -616,9 +705,10 @@ async function renderWithRemotion(jobId, job, scenes) {
     vfxSettings: {
       vignette:        true,
       transitionFlash: true,
-      filmGrain:       true,
+      filmGrain:       (presetVfx.grainIntensity ?? 1) > 0,
       zoomPunch:       true,
-      cameraShake:     true,
+      cameraShake:     (presetVfx.shakeIntensity ?? 1) > 0,
+      ...presetVfx,
     },
   };
 
@@ -647,9 +737,9 @@ async function renderWithRemotion(jobId, job, scenes) {
     throw new Error(`Remotion bundle mislukt: ${bundleErr.message}`);
   }
 
+  const browserExecutable = process.env.CHROMIUM_EXECUTABLE_PATH || undefined;
   let composition;
   try {
-    const browserExecutable = process.env.CHROMIUM_EXECUTABLE_PATH || undefined;
     composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable });
     console.log(`[RenderService] Compositie: ${composition.durationInFrames} frames, ${composition.width}x${composition.height}`);
   } catch (compErr) {

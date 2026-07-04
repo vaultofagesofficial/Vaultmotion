@@ -93,13 +93,16 @@ function detectFormat(topic) {
 const VALID_RENDER_ENGINES = new Set(['cinematic_title', 'ken_burns', 'animated_map', 'timeline', 'stats_counter', 'fact_animation', 'data_comparison', 'outro_cta']);
 const CODE_ONLY_TEMPLATES  = new Set(['fact_animation', 'data_comparison', 'stats_counter', 'timeline', 'animated_map']);
 
-async function analyzeScript(script, style = 'documentaire', durationSeconds = 60, renderStyle = 'ai-cinematic', format = 'narrative', adaptiveStrategy = true) {
+async function analyzeScript(script, style = 'documentaire', durationSeconds = 60, renderStyle = 'ai-cinematic', format = 'narrative', adaptiveStrategy = true, pacing = null) {
   const is2D = renderStyle === '2d';
 
   // ── Energy niveau bepaalt max frame-duur per scène ───────────────────────
   const isHighEnergy = ['gaming', 'sport'].includes(style);
   const isLowEnergy  = ['beauty', 'finance'].includes(style);
-  const maxFrames    = isHighEnergy ? 90 : isLowEnergy ? 150 : 120;
+  let maxFrames    = isHighEnergy ? 90 : isLowEnergy ? 150 : 120;
+  // Visual-preset pacing overschrijft het energieniveau
+  if (pacing === 'fast') maxFrames = 60;   // max 2s per scène (TikTok-stijl)
+  if (pacing === 'slow') maxFrames = 150;  // rustige cuts
 
   const isListicle   = format === 'listicle';
   const isHowto      = format === 'howto';

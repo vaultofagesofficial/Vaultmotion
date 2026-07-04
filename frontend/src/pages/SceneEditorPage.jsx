@@ -30,6 +30,22 @@ const MUSIC_OPTIONS = [
   { value: 'story',        label: 'Story' },
 ];
 
+// Miniatuur-preview: visual_focus als quote op donkere achtergrond (placeholder tot render)
+function ScenePreviewThumb({ scene }) {
+  const text = scene.visual_focus || scene.script_segment || '';
+  return (
+    <div
+      className="shrink-0 w-24 h-[168px] rounded-lg border border-dark-600 overflow-hidden flex items-center justify-center p-1.5"
+      style={{ background: 'linear-gradient(160deg, #1a1a1a 0%, #0d0d0d 100%)' }}
+      title={text}
+    >
+      <span className="text-[9px] leading-tight text-center" style={{ color: '#d4a017', display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {text ? `"${text.slice(0, 110)}"` : '—'}
+      </span>
+    </div>
+  );
+}
+
 function SortableSceneCard({ scene, index, onChange, onDelete, t }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: scene._editorId });
@@ -50,6 +66,8 @@ function SortableSceneCard({ scene, index, onChange, onDelete, t }) {
         >
           <GripVertical size={18} />
         </button>
+
+        <ScenePreviewThumb scene={scene} />
 
         <div className="flex-1 space-y-3">
           <div className="flex items-center gap-3">
@@ -77,6 +95,27 @@ function SortableSceneCard({ scene, index, onChange, onDelete, t }) {
             placeholder={t('editor.scene.placeholder', 'Scène tekst / ondertitel inhoud...')}
             className="w-full text-sm bg-dark-700 border border-dark-600 rounded-lg px-3 py-2 text-white resize-none placeholder-gray-600"
           />
+
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">{t('editor.scene.visual_focus', 'Visueel onderwerp (voor AI-achtergrond)')}</label>
+            <input
+              type="text"
+              value={scene.visual_focus || ''}
+              onChange={e => onChange({ visual_focus: e.target.value })}
+              placeholder={t('editor.scene.visual_focus_ph', 'bijv. ancient Roman colosseum at sunset')}
+              className="w-full text-sm bg-dark-700 border border-dark-600 rounded-lg px-3 py-1.5 text-white placeholder-gray-600"
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer w-fit" title={t('editor.scene.skip_kie_hint', 'Deze scène rendert code-only (2D) — bespaart AI-credits')}>
+            <input
+              type="checkbox"
+              checked={!!scene.skip_kie}
+              onChange={e => onChange({ skip_kie: e.target.checked })}
+              className="accent-red-600"
+            />
+            💰 {t('editor.scene.skip_kie', 'Skip AI-video (code-only, bespaart credits)')}
+          </label>
 
           {scene.template === 'data_comparison' && scene.comparison && Array.isArray(scene.comparison.entries) && (
             <div className="rounded-lg bg-dark-900 border border-dark-600 p-3 space-y-1.5">
@@ -148,6 +187,7 @@ export default function SceneEditorPage({ job }) {
     job.subtitle_settings || { enabled: true, fontSize: 'normaal', highlightColor: '#FFD700', position: 'onder', wordsPerLine: 3 }
   );
   const [voiceKey, setVoiceKey] = useState(job.voice_key || 'en_male');
+  const [speakingStyle, setSpeakingStyle] = useState(job.speaking_style || 'neutral');
   const [musicMode, setMusicMode] = useState(job.mode || 'documentary');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
@@ -193,6 +233,7 @@ export default function SceneEditorPage({ job }) {
         scenes:            cleanScenes,
         subtitle_settings: { ...subtitleSettings },
         voice_key:         voiceKey,
+        speaking_style:    speakingStyle,
         music_url:         `/assets/music/${musicMode}.mp3`,
       });
 
@@ -335,6 +376,19 @@ export default function SceneEditorPage({ job }) {
               </select>
             </div>
           </div>
+        </div>
+
+        <div>
+          <h3 className="heading-display text-sm mb-3">{t('editor.speaking_style.label', 'Spreekstijl')}</h3>
+          <select
+            value={speakingStyle}
+            onChange={e => setSpeakingStyle(e.target.value)}
+            className="w-full text-sm bg-dark-700 border border-dark-600 rounded-lg px-3 py-1.5 text-white"
+          >
+            <option value="neutral">{t('editor.speaking_style.neutral', '🎙️ Neutraal (standaard)')}</option>
+            <option value="dramatic">{t('editor.speaking_style.dramatic', '🎭 Dramatisch — trager, meer expressie')}</option>
+            <option value="energetic">{t('editor.speaking_style.energetic', '⚡ Energiek — sneller, levendiger')}</option>
+          </select>
         </div>
 
         <div>

@@ -180,11 +180,11 @@ async function generateAnchorImagePexels(styleAnchor) {
 
 // ── Text-to-image helper ────────────────────────────────────────────────────
 
-async function generateImageForScene(prompt, model = 'grok-imagine/text-to-image') {
+async function generateImageForScene(prompt, model = 'grok-imagine/text-to-image', aspectRatio = '9:16') {
   const body = {
     model,
     callBackUrl: '',
-    input: { prompt: prompt.slice(0, 2000), aspect_ratio: '9:16' },
+    input: { prompt: prompt.slice(0, 2000), aspect_ratio: aspectRatio },
   };
 
   console.log('[KIE] T2I Create request:', JSON.stringify(body).slice(0, 200));

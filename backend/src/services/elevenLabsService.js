@@ -77,9 +77,17 @@ function truncateScriptToLimit(script) {
   return { text: cut, truncated: true };
 }
 
-async function generateVoiceOver(script, jobId, voiceKey = 'EXAVITQu4vr4xnSDxMaL') {
+// Spreekstijlen → ElevenLabs voice_settings (Submagic-stijl)
+const SPEAKING_STYLES = {
+  dramatic:  { stability: 0.75, similarity_boost: 0.8,  style: 0.6,  use_speaker_boost: true }, // langzamer gevoel, meer expressie
+  energetic: { stability: 0.3,  similarity_boost: 0.7,  style: 0.55, use_speaker_boost: true }, // levendiger, hogere variatie
+  neutral:   { stability: 0.5,  similarity_boost: 0.75, style: 0.3,  use_speaker_boost: true }, // huidig gedrag
+};
+
+async function generateVoiceOver(script, jobId, voiceKey = 'EXAVITQu4vr4xnSDxMaL', speakingStyle = 'neutral') {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY niet ingesteld');
+  const voiceSettings = SPEAKING_STYLES[speakingStyle] || SPEAKING_STYLES.neutral;
 
   const voiceObj = VOICES[voiceKey];
   const voiceId  = voiceObj ? voiceObj.id : voiceKey;
@@ -113,7 +121,7 @@ async function generateVoiceOver(script, jobId, voiceKey = 'EXAVITQu4vr4xnSDxMaL
       {
         text: script,
         model_id: 'eleven_multilingual_v2',
-        voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true },
+        voice_settings: voiceSettings,
         output_format: 'mp3_44100_128',
       },
       {
@@ -152,7 +160,7 @@ async function generateVoiceOver(script, jobId, voiceKey = 'EXAVITQu4vr4xnSDxMaL
       {
         text: script,
         model_id: 'eleven_multilingual_v2',
-        voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true },
+        voice_settings: voiceSettings,
         output_format: 'mp3_44100_128',
       },
       {

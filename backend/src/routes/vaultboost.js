@@ -4,8 +4,9 @@ const path      = require('path');
 const router    = express.Router();
 const { startRenderJob, getJob } = require('../services/renderService');
 const { selectModeFromTopic }    = require('../services/claudeAnalyzer');
+const { OUTPUTS_DIR } = require('../paths');
 
-const FEEDBACK_FILE = path.resolve(__dirname, '../../../outputs/feedback.json');
+const FEEDBACK_FILE = path.join(OUTPUTS_DIR, 'feedback.json');
 
 function loadFeedback() {
   try {

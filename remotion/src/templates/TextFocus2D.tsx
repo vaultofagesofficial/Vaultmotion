@@ -82,7 +82,7 @@ function LeftAlignedBold({ text, frame, fps, theme }: { text: string; frame: num
       {/* Tekst */}
       <div style={{
         position: 'absolute', left: SAFE_SIDES + 32, right: SAFE_SIDES,
-        top: '50%', transform: 'translateY(-50%)',
+        top: '50%',
         opacity: op, transform: `translateX(${x}px) translateY(-50%)`,
       }}>
         <div style={{
