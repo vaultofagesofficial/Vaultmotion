@@ -1,0 +1,14 @@
+{
+  "name": "vaultmotion",
+  "version": "1.0.0",
+  "description": "VaultMotion — AI Video Animatie Tool voor YouTube Shorts",
+  "scripts": {
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install && cd ../remotion && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+.env
+outputs/
+jobs.json
+batches.json
+*.log
+dist/
+
+*.mp4
+*.webm
+backend/jobs.json
+backend/batches.json
