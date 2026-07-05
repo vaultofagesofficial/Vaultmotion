@@ -30,23 +30,100 @@ const MUSIC_OPTIONS = [
   { value: 'story',        label: 'Story' },
 ];
 
-// Miniatuur-preview: visual_focus als quote op donkere achtergrond (placeholder tot render)
-function ScenePreviewThumb({ scene }) {
+// ── Storyboard-helpers ──────────────────────────────────────────────────────
+
+const TEMPLATE_ICONS = {
+  cinematic_title: '🎬', ken_burns: '📸', animated_map: '🗺️', timeline: '📅',
+  stats_counter: '🔢', outro_cta: '🔔', fact_animation: '📐', data_comparison: '📊',
+  text_focus_2d: '📝',
+};
+
+// Kleurthema's — zelfde waarden als remotion/src/colorThemes.ts
+const EDITOR_THEMES = {
+  default: { bg: '#111111', accent: '#FFD700' },
+  warm:    { bg: '#180a00', accent: '#f6ad55' },
+  cool:    { bg: '#07101f', accent: '#93c5fd' },
+  neutral: { bg: '#111111', accent: '#FFD700' },
+  dark:    { bg: '#0f0f14', accent: '#00d4ff' },
+  noir:    { bg: '#000000', accent: '#e53e3e' },
+  neon:    { bg: '#0a0014', accent: '#39ff14' },
+  luxury:  { bg: '#0d0d0d', accent: '#d4af37' },
+};
+
+// Kosten per scène: KIE-scènes ≈ 75cr (T2I + Kling I2V), 2D = gratis
+function sceneCost(scene, renderStyle) {
+  if (renderStyle === '2d' || scene.skip_kie || scene.template === 'text_focus_2d' || scene.chapter_card) return 'gratis';
+  if (renderStyle === 'simple') return '~75cr';
+  if (renderStyle === 'hybrid') {
+    if (scene.template === 'cinematic_title' || scene.template === 'outro_cta' || scene.needs_ai) return '~75cr';
+    return 'gratis';
+  }
+  return '~50cr'; // ai-cinematic/ai-image gemiddeld
+}
+
+// Miniatuur-preview: visual_focus als quote op themakleur-achtergrond + template-icoon
+function ScenePreviewThumb({ scene, theme, onClick }) {
   const text = scene.visual_focus || scene.script_segment || '';
+  const icon = TEMPLATE_ICONS[scene.template] || '🎞️';
   return (
-    <div
-      className="shrink-0 w-24 h-[168px] rounded-lg border border-dark-600 overflow-hidden flex items-center justify-center p-1.5"
-      style={{ background: 'linear-gradient(160deg, #1a1a1a 0%, #0d0d0d 100%)' }}
-      title={text}
+    <button
+      onClick={onClick}
+      className="shrink-0 w-24 h-[168px] rounded-lg border border-dark-600 overflow-hidden flex flex-col items-center justify-center p-1.5 gap-1 hover:border-red-500/60 transition-colors cursor-pointer"
+      style={{ background: `linear-gradient(160deg, ${theme.bg} 0%, #050505 100%)` }}
+      title={`${text} — klik voor preview`}
     >
-      <span className="text-[9px] leading-tight text-center" style={{ color: '#d4a017', display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-        {text ? `"${text.slice(0, 110)}"` : '—'}
+      <span style={{ fontSize: 22 }}>{icon}</span>
+      <span className="text-[9px] leading-tight text-center" style={{ color: theme.accent, display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {text ? `"${text.slice(0, 90)}"` : '—'}
       </span>
+      <span className="text-[8px]" style={{ color: '#6b6b6b' }}>▶ preview</span>
+    </button>
+  );
+}
+
+// Gesimuleerde live preview: CSS-animatie die de Remotion-template nabootst
+function ScenePreviewModal({ scene, theme, onClose }) {
+  if (!scene) return null;
+  const isTitle = scene.template === 'cinematic_title' || scene.template === 'outro_cta';
+  const isData  = ['data_comparison', 'stats_counter', 'fact_animation', 'timeline'].includes(scene.template);
+  const title   = scene.content?.title || scene.visual_focus || scene.script_segment || '';
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)' }} onClick={onClose}>
+      <style>{`
+        @keyframes sePrevTitle { 0% { opacity: 0; transform: scale(1.3); letter-spacing: 12px; } 100% { opacity: 1; transform: scale(1); letter-spacing: 3px; } }
+        @keyframes sePrevText  { 0% { opacity: 0; transform: translateX(-30px); } 100% { opacity: 1; transform: translateX(0); } }
+        @keyframes sePrevBar   { 0% { width: 0; } 100% { width: var(--w); } }
+        @keyframes sePrevZoom  { 0% { transform: scale(1); } 100% { transform: scale(1.12); } }
+      `}</style>
+      <div onClick={e => e.stopPropagation()} className="rounded-2xl overflow-hidden border border-dark-600" style={{ width: 240, height: 426, position: 'relative', background: theme.bg }}>
+        <div style={{ position: 'absolute', inset: 0, animation: 'sePrevZoom 6s ease-out forwards', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+          {isTitle ? (
+            <span style={{ fontFamily: 'Impact', fontSize: 24, color: '#fff', textAlign: 'center', animation: 'sePrevTitle 1.2s ease-out forwards', textShadow: `0 2px 16px ${theme.accent}` }}>
+              {title.slice(0, 40)}
+            </span>
+          ) : isData ? (
+            <div className="w-full space-y-2.5">
+              <span style={{ fontSize: 12, color: theme.accent, animation: 'sePrevText 0.5s ease-out forwards' }}>{title.slice(0, 50)}</span>
+              {[80, 55, 35].map((w, i) => (
+                <div key={i} style={{ height: 14, borderRadius: 4, background: theme.accent, opacity: 0.85 - i * 0.2, '--w': `${w}%`, width: `${w}%`, animation: `sePrevBar 1s ease-out ${0.3 + i * 0.3}s both` }} />
+              ))}
+            </div>
+          ) : (
+            <span style={{ fontSize: 15, color: '#fff', textAlign: 'center', lineHeight: 1.5, animation: 'sePrevText 0.8s ease-out forwards' }}>
+              "{(scene.script_segment || title).slice(0, 110)}"
+            </span>
+          )}
+        </div>
+        <div style={{ position: 'absolute', bottom: 10, left: 0, right: 0, textAlign: 'center' }}>
+          <span style={{ fontSize: 9, color: '#6b6b6b' }}>{TEMPLATE_ICONS[scene.template]} {scene.template} · gesimuleerde preview</span>
+        </div>
+        <button onClick={onClose} style={{ position: 'absolute', top: 8, right: 10, color: '#9ca3af', fontSize: 16 }}>✕</button>
+      </div>
     </div>
   );
 }
 
-function SortableSceneCard({ scene, index, onChange, onDelete, t }) {
+function SortableSceneCard({ scene, index, onChange, onDelete, t, theme, renderStyle, onPreview }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: scene._editorId });
 
@@ -67,12 +144,18 @@ function SortableSceneCard({ scene, index, onChange, onDelete, t }) {
           <GripVertical size={18} />
         </button>
 
-        <ScenePreviewThumb scene={scene} />
+        <ScenePreviewThumb scene={scene} theme={theme} onClick={onPreview} />
 
         <div className="flex-1 space-y-3">
           <div className="flex items-center gap-3">
             <span className="text-mono text-xs w-16" style={{ color: '#6b6b6b' }}>
               {t('editor.scene.label', `Scène ${index + 1}`, { n: index + 1 })}
+            </span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{
+              background: sceneCost(scene, renderStyle) === 'gratis' ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.12)',
+              color:      sceneCost(scene, renderStyle) === 'gratis' ? '#4ade80' : '#fbbf24',
+            }}>
+              {sceneCost(scene, renderStyle)}
             </span>
             <div className="relative flex-1">
               <select
@@ -192,6 +275,8 @@ export default function SceneEditorPage({ job }) {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
   const [addTemplate, setAddTemplate] = useState('ken_burns');
+  const [previewScene, setPreviewScene] = useState(null);
+  const theme = EDITOR_THEMES[job.color_theme] || EDITOR_THEMES.default;
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -247,6 +332,7 @@ export default function SceneEditorPage({ job }) {
 
   return (
     <div className="flex h-full min-h-screen">
+      {previewScene && <ScenePreviewModal scene={previewScene} theme={theme} onClose={() => setPreviewScene(null)} />}
       <div className="flex-1 p-6 overflow-y-auto">
         <div className="max-w-2xl mx-auto">
           <h1 className="heading-display text-2xl font-bold mb-1">{t('editor.title', 'Scène Editor')}</h1>
@@ -257,14 +343,26 @@ export default function SceneEditorPage({ job }) {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={scenes.map(s => s._editorId)} strategy={verticalListSortingStrategy}>
               {scenes.map((scene, i) => (
-                <SortableSceneCard
-                  key={scene._editorId}
-                  scene={scene}
-                  index={i}
-                  onChange={patch => updateScene(i, patch)}
-                  onDelete={() => deleteScene(i)}
-                  t={t}
-                />
+                <div key={scene._editorId}>
+                  {scene.chapter && scene.chapter !== scenes[i - 1]?.chapter && (
+                    <div className="flex items-center gap-2 mt-4 mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+                        📖 {scene.chapter}
+                      </span>
+                      <div className="flex-1 h-px bg-dark-700" />
+                    </div>
+                  )}
+                  <SortableSceneCard
+                    scene={scene}
+                    index={i}
+                    onChange={patch => updateScene(i, patch)}
+                    onDelete={() => deleteScene(i)}
+                    t={t}
+                    theme={theme}
+                    renderStyle={job.render_style || 'ai-cinematic'}
+                    onPreview={() => setPreviewScene(scene)}
+                  />
+                </div>
               ))}
             </SortableContext>
           </DndContext>

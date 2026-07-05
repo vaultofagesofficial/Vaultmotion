@@ -116,6 +116,37 @@ function extractError(err) {
   return err.message;
 }
 
+// ── Credit Shield: saldo-check vóór dure aanroepen ──────────────────────────
+
+// Geschatte credits per bewerking (kie.ai-tarieven, conservatief afgerond)
+const CREDIT_COSTS = {
+  t2i_grok:        5,   // grok-imagine/text-to-image per beeld
+  i2v_kling:      70,   // kling-2.6 image/text-to-video 5s std 720p
+  t2v_seedance720: 30,  // bytedance/seedance-1.5-pro 5s 720p
+  t2v_seedance480: 15,  // bytedance/seedance-1.5-pro 5s 480p
+};
+
+/**
+ * Haalt het actuele creditsaldo op bij kie.ai.
+ * Retourneert null als de check niet lukt (dan blokkeert Credit Shield niets).
+ */
+async function getCreditBalance() {
+  if (!process.env.KIE_API_KEY) return null;
+  try {
+    const res = await axios.get('https://api.kie.ai/api/v1/chat/credit', {
+      headers: authHeader(),
+      timeout: 10000,
+    });
+    const credits = res.data?.data;
+    if (typeof credits === 'number') return credits;
+    if (typeof credits?.credits === 'number') return credits.credits;
+    return null;
+  } catch (err) {
+    console.warn('[CreditShield] Saldo-check mislukt:', extractError(err));
+    return null;
+  }
+}
+
 // ── Ankerbeeld generatie via kie.ai text-to-image (met Pexels als fallback) ──
 
 async function generateAnchorImage(styleAnchor, jobId, outputsDir) {
@@ -551,4 +582,4 @@ async function generateSimpleScene(visualFocus, styleAnchor, jobId, outputsDir, 
   throw new Error(`SimpleScene I2V timeout (scène ${sceneIdx})`);
 }
 
-module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus };
+module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus, getCreditBalance, CREDIT_COSTS };

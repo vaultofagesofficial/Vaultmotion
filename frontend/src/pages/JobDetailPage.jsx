@@ -189,6 +189,11 @@ export default function JobDetailPage() {
   const [retrying, setRetrying]         = useState(false);
   const [rerendering, setRerendering]   = useState(false);
   const [thumbnail, setThumbnail]   = useState({ uploading: false, url: null, error: null });
+  const [sharing, setSharing]       = useState(false);
+  const [shareUrl, setShareUrl]     = useState(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareJobs, setCompareJobs] = useState([]);
+  const [compareWith, setCompareWith] = useState(null);
   const thumbInputRef = useRef(null);
   const intervalRef   = useRef(null);
 
@@ -202,6 +207,30 @@ export default function JobDetailPage() {
     setRerendering(true);
     try { await axios.post(`/api/render/${jobId}/retry-render`); } catch (e) { console.error(e); }
     setRerendering(false);
+  }
+
+  async function handleShare() {
+    setSharing(true);
+    try {
+      const { data } = await axios.post(`/api/render/${jobId}/share`);
+      setShareUrl(data.share_url);
+      navigator.clipboard?.writeText(data.share_url).catch(() => {});
+    } catch (e) {
+      console.error('[share]', e.message);
+    }
+    setSharing(false);
+  }
+
+  async function openCompare() {
+    try {
+      const { data } = await axios.get('/api/render');
+      const prev = (Array.isArray(data) ? data : []).filter(j =>
+        j.id !== jobId && j.status === 'completed' && j.video_url
+      );
+      setCompareJobs(prev.slice(0, 10));
+      setCompareWith(prev[0] || null);
+      setCompareOpen(true);
+    } catch (e) { console.error('[compare]', e.message); }
   }
 
   async function handleYouTubeUpload() {
@@ -353,7 +382,9 @@ export default function JobDetailPage() {
                     isActiveStep ? 'bg-brand-600 text-white animate-pulse' :
                     'bg-dark-700 text-gray-500'
                   }`}>
-                    {isDone ? '✓' : i + 1}
+                    {isDone ? '✓' : isActiveStep
+                      ? <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      : i + 1}
                   </div>
                   <span className="text-mono text-[10px] text-center leading-tight" style={{
                     color: isDone ? '#4ade80' : isActiveStep ? '#e8e3d8' : '#6b6b6b'
@@ -477,6 +508,19 @@ export default function JobDetailPage() {
             </div>
           )}
 
+          {job.credit_warning && (
+            <div className="p-3 rounded-lg text-xs mb-3" style={{ backgroundColor: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.35)', color: '#fb923c' }}>
+              ⚠️ {job.credit_warning}
+            </div>
+          )}
+
+          {(job.estimated_credits !== null && job.estimated_credits !== undefined) && (
+            <div className="p-3 rounded-lg text-xs mb-3 flex items-center justify-between" style={{ backgroundColor: 'rgba(212,160,23,0.06)', border: '1px solid rgba(212,160,23,0.25)', color: '#d4a017' }}>
+              <span>💳 {t('job.credits.label', 'Geschat verbruik')}: <strong>{job.estimated_credits} credits</strong></span>
+              {job.credit_breakdown && <span style={{ color: '#6b6b6b' }}>{job.credit_breakdown}</span>}
+            </div>
+          )}
+
           {job.status === 'completed' && job.partial_failure > 0 && (
             <div className="p-3 rounded-lg text-xs mb-3" style={{ backgroundColor: 'rgba(212,160,23,0.08)', border: '1px solid rgba(212,160,23,0.35)', color: '#d4a017' }}>
               {t('job.partial_failure', `⚠️ ${job.partial_failure} scène(s) zonder achtergrond — video is gerenderd met gradient fallback.`, { count: job.partial_failure })}
@@ -522,6 +566,28 @@ export default function JobDetailPage() {
               >
                 <Download size={14} /> {t('job.btn.download', 'Download')}
               </a>
+
+              {/* Deel + Vergelijk */}
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={handleShare}
+                  disabled={sharing}
+                  className="btn-secondary flex-1 flex items-center justify-center gap-1.5 text-xs py-2"
+                >
+                  {sharing ? '⏳' : '🔗'} {shareUrl ? t('job.btn.shared', 'Gekopieerd!') : t('job.btn.share', 'Deel (24u)')}
+                </button>
+                <button
+                  onClick={openCompare}
+                  className="btn-secondary flex-1 flex items-center justify-center gap-1.5 text-xs py-2"
+                >
+                  ⚖️ {t('job.btn.compare', 'Vergelijk')}
+                </button>
+              </div>
+              {shareUrl && (
+                <p className="text-[10px] mt-1.5 break-all" style={{ color: '#6b6b6b' }}>
+                  {t('job.share.hint', 'Link gekopieerd — 24 uur geldig:')} <span style={{ color: '#d4a017' }}>{shareUrl}</span>
+                </p>
+              )}
 
               {!ytUpload.url ? (
                 <button
@@ -637,6 +703,45 @@ export default function JobDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Vergelijk-modal: twee renders naast elkaar */}
+      {compareOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setCompareOpen(false)}>
+          <div onClick={e => e.stopPropagation()} className="rounded-2xl p-5 w-full max-w-3xl" style={{ background: '#161616', border: '1px solid #2a2a2a' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-white">⚖️ {t('job.compare.title', 'Vergelijk renders')}</h3>
+              <button onClick={() => setCompareOpen(false)} className="text-gray-500 hover:text-white">✕</button>
+            </div>
+            {compareJobs.length === 0 ? (
+              <p className="text-sm text-gray-400 py-6 text-center">{t('job.compare.none', 'Geen andere voltooide renders om mee te vergelijken.')}</p>
+            ) : (
+              <>
+                <select
+                  value={compareWith?.id || ''}
+                  onChange={e => setCompareWith(compareJobs.find(j => j.id === e.target.value) || null)}
+                  className="w-full text-sm bg-dark-700 border border-dark-600 rounded-lg px-3 py-2 text-white mb-4"
+                >
+                  {compareJobs.map(j => (
+                    <option key={j.id} value={j.id}>{j.title || j.id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString('nl-BE')}</option>
+                  ))}
+                </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs mb-2 font-semibold" style={{ color: '#d4a017' }}>{t('job.compare.current', 'Deze render')}: {job.title}</p>
+                    <video src={job.video_url} controls muted className="w-full rounded-lg" style={{ aspectRatio: '9/16', maxHeight: 340, objectFit: 'contain', background: '#000' }} />
+                  </div>
+                  <div>
+                    <p className="text-xs mb-2 font-semibold" style={{ color: '#9ca3af' }}>{compareWith?.title || '—'}</p>
+                    {compareWith && (
+                      <video src={compareWith.video_url} controls muted className="w-full rounded-lg" style={{ aspectRatio: '9/16', maxHeight: 340, objectFit: 'contain', background: '#000' }} />
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

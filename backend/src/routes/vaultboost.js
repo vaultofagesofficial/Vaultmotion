@@ -22,7 +22,7 @@ function saveFeedback(data) {
 // POST /api/vaultboost/webhook — start een render job vanuit VaultBoost
 router.post('/webhook', async (req, res) => {
   try {
-    const { topic, trending_score, source, mode, auto_upload = false, voice_key, duration } = req.body;
+    const { topic, script, trending_score, source, mode, auto_upload = false, voice_key, duration, render_style, hybrid_intensity, workspace_id } = req.body;
     if (!topic || topic.trim().length < 3) {
       return res.status(400).json({ error: 'topic is verplicht (min. 3 tekens)' });
     }
@@ -30,11 +30,14 @@ router.post('/webhook', async (req, res) => {
     const resolvedMode = mode || selectModeFromTopic(topic);
 
     const result = await startRenderJob({
-      script:   topic,
+      script:   (script && script.trim().length >= 10) ? script.trim() : topic,
       title:    topic,
       mode:     resolvedMode,
       duration: duration || 60,
       voiceKey: voice_key || 'en_male',
+      render_style: render_style || undefined,
+      hybrid_intensity: hybrid_intensity || undefined,
+      workspace_id: workspace_id || undefined,
       subtitleSettings: { enabled: true, fontSize: 'normaal', highlightColor: '#FFD700', position: 'onder' },
       vaultboost_meta: { trending_score, source, auto_upload, resolved_mode: resolvedMode },
     });

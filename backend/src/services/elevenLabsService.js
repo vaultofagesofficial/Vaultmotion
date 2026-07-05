@@ -66,15 +66,40 @@ function aggregateToWords(characters, charStartTimes, charEndTimes) {
  *
  * @returns {{ audioUrl, wordTimings: [{word, start_time, end_time}] }}
  */
-const MAX_ELEVENLABS_CHARS = 4500;
+const MAX_ELEVENLABS_CHARS = 4000;
 
-function truncateScriptToLimit(script) {
-  if (script.length <= MAX_ELEVENLABS_CHARS) return { text: script, truncated: false };
-  const sub = script.slice(0, MAX_ELEVENLABS_CHARS);
-  const lastSentence = sub.search(/[^.!?]+[.!?]+\s*$/);
-  const cut = lastSentence > 0 ? sub.slice(0, lastSentence).trimEnd() : sub.trimEnd();
-  console.warn(`[ElevenLabs] Script te lang (${script.length} chars > ${MAX_ELEVENLABS_CHARS}) — afgekapt naar ${cut.length} chars op laatste volledige zin`);
-  return { text: cut, truncated: true };
+/**
+ * Splitst een script op zinsgrenzen in chunks van max MAX_ELEVENLABS_CHARS.
+ * Lange scripts worden zo NIET meer afgekapt maar in delen gegenereerd.
+ */
+function splitScriptIntoChunks(script) {
+  if (script.length <= MAX_ELEVENLABS_CHARS) return [script];
+  const sentences = script.match(/[^.!?]+[.!?]+["')\]]*\s*/g) || [script];
+  const chunks = [];
+  let current = '';
+  for (const s of sentences) {
+    if ((current + s).length > MAX_ELEVENLABS_CHARS && current) {
+      chunks.push(current.trim());
+      current = s;
+    } else {
+      current += s;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  console.log(`[ElevenLabs] Script ${script.length} chars → ${chunks.length} chunks (max ${MAX_ELEVENLABS_CHARS})`);
+  return chunks;
+}
+
+// Audio-duur van een mp3 via ffprobe (voor correcte word-timing offsets bij chunking)
+function probeAudioDuration(filePath) {
+  try {
+    const { execSync } = require('child_process');
+    const ffprobePath = process.env.FFPROBE_PATH
+      || (() => { try { return require('@ffprobe-installer/ffprobe').path; } catch { return 'ffprobe'; } })();
+    const out = execSync(`"${ffprobePath}" -v quiet -show_entries format=duration -of csv=p=0 "${filePath}"`, { encoding: 'utf8', timeout: 10000 });
+    const dur = parseFloat(out.trim());
+    return isNaN(dur) ? null : dur;
+  } catch { return null; }
 }
 
 // Spreekstijlen → ElevenLabs voice_settings (Submagic-stijl)
@@ -84,6 +109,44 @@ const SPEAKING_STYLES = {
   neutral:   { stability: 0.5,  similarity_boost: 0.75, style: 0.3,  use_speaker_boost: true }, // huidig gedrag
 };
 
+/**
+ * Genereert audio + word-timings voor ÉÉN tekst-chunk.
+ * @returns {{ buffer: Buffer, wordTimings: Array|null }}
+ */
+async function generateChunkAudio(text, voiceId, voiceSettings, apiKey) {
+  // Probeer /with-timestamps (base64 audio + alignment)
+  try {
+    const tsRes = await axios.post(
+      `${ELEVENLABS_BASE}/text-to-speech/${voiceId}/with-timestamps`,
+      { text, model_id: 'eleven_multilingual_v2', voice_settings: voiceSettings, output_format: 'mp3_44100_128' },
+      { headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' }, timeout: 120000 }
+    );
+    const body = tsRes.data;
+    if (body.audio_base64) {
+      const alignment = body.alignment || body.normalized_alignment;
+      let wordTimings = null;
+      if (alignment?.characters?.length) {
+        wordTimings = aggregateToWords(
+          alignment.characters,
+          alignment.character_start_times_seconds,
+          alignment.character_end_times_seconds
+        );
+      }
+      return { buffer: Buffer.from(body.audio_base64, 'base64'), wordTimings };
+    }
+  } catch (tsErr) {
+    console.warn(`[ElevenLabs] with-timestamps mislukt: ${tsErr.message} — fallback naar standaard TTS`);
+  }
+
+  // Fallback: standaard TTS zonder timestamps
+  const ttsRes = await axios.post(
+    `${ELEVENLABS_BASE}/text-to-speech/${voiceId}`,
+    { text, model_id: 'eleven_multilingual_v2', voice_settings: voiceSettings, output_format: 'mp3_44100_128' },
+    { headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' }, responseType: 'arraybuffer', timeout: 90000 }
+  );
+  return { buffer: Buffer.from(ttsRes.data), wordTimings: null };
+}
+
 async function generateVoiceOver(script, jobId, voiceKey = 'EXAVITQu4vr4xnSDxMaL', speakingStyle = 'neutral') {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY niet ingesteld');
@@ -92,12 +155,6 @@ async function generateVoiceOver(script, jobId, voiceKey = 'EXAVITQu4vr4xnSDxMaL
   const voiceObj = VOICES[voiceKey];
   const voiceId  = voiceObj ? voiceObj.id : voiceKey;
   const voiceName = voiceObj ? voiceObj.name : voiceKey;
-
-  const { text: safeScript, truncated } = truncateScriptToLimit(script);
-  if (truncated) {
-    console.warn(`[ElevenLabs] validation_warning: Script te lang voor ElevenLabs — mogelijke truncatie vermeden door afkappen`);
-  }
-  script = safeScript;
 
   const audioPath     = path.join(AUDIO_DIR, `${jobId}.mp3`);
   const tsPath        = path.join(AUDIO_DIR, `${jobId}.timestamps.json`);
@@ -110,73 +167,48 @@ async function generateVoiceOver(script, jobId, voiceKey = 'EXAVITQu4vr4xnSDxMaL
     return { audioUrl, wordTimings };
   }
 
-  console.log(`[ElevenLabs] Genereer voice-over + timestamps: "${voiceName}" (${voiceId})`);
+  const chunks = splitScriptIntoChunks(script);
+  console.log(`[ElevenLabs] Genereer voice-over (${chunks.length} chunk${chunks.length === 1 ? '' : 's'}): "${voiceName}" (${voiceId})`);
 
-  // ── Probeer /with-timestamps endpoint (geeft base64 audio + alignment) ────
-  let wordTimings = null;
+  const buffers = [];
+  let allTimings = [];
+  let anyTimings = false;
+  let offsetSec  = 0;
 
-  try {
-    const tsRes = await axios.post(
-      `${ELEVENLABS_BASE}/text-to-speech/${voiceId}/with-timestamps`,
-      {
-        text: script,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: voiceSettings,
-        output_format: 'mp3_44100_128',
-      },
-      {
-        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-        timeout: 90000,
-      }
-    );
+  for (let c = 0; c < chunks.length; c++) {
+    const { buffer, wordTimings } = await generateChunkAudio(chunks[c], voiceId, voiceSettings, apiKey);
+    buffers.push(buffer);
 
-    const body = tsRes.data;
-
-    // Sla audio op vanuit base64
-    if (body.audio_base64) {
-      fs.writeFileSync(audioPath, Buffer.from(body.audio_base64, 'base64'));
-      console.log(`[ElevenLabs] Audio opgeslagen via with-timestamps (${Math.round(fs.statSync(audioPath).size / 1024)}KB)`);
+    // Word-timings verschuiven met de cumulatieve duur van vorige chunks
+    if (wordTimings?.length) {
+      anyTimings = true;
+      allTimings = allTimings.concat(wordTimings.map(w => ({
+        ...w,
+        start_time: w.start_time + offsetSec,
+        end_time:   w.end_time   + offsetSec,
+      })));
     }
 
-    // Aggregeer character timestamps naar woorden
-    const alignment = body.alignment || body.normalized_alignment;
-    if (alignment?.characters?.length) {
-      wordTimings = aggregateToWords(
-        alignment.characters,
-        alignment.character_start_times_seconds,
-        alignment.character_end_times_seconds
-      );
-      console.log(`[ElevenLabs] ${wordTimings.length} woord-timestamps opgehaald`);
+    // Chunk-duur bepalen voor de offset van de VOLGENDE chunk (ffprobe > laatste woord)
+    if (c < chunks.length - 1) {
+      const tmpPath = path.join(AUDIO_DIR, `${jobId}.chunk${c}.mp3`);
+      fs.writeFileSync(tmpPath, buffer);
+      const probed = probeAudioDuration(tmpPath);
+      fs.unlinkSync(tmpPath);
+      const lastWordEnd = wordTimings?.length ? wordTimings[wordTimings.length - 1].end_time : null;
+      offsetSec += probed ?? (lastWordEnd !== null ? lastWordEnd + 0.1 : 0);
+      console.log(`[ElevenLabs] Chunk ${c + 1}/${chunks.length} klaar — duur ${((probed ?? lastWordEnd) || 0).toFixed(2)}s, offset nu ${offsetSec.toFixed(2)}s`);
     }
-
-  } catch (tsErr) {
-    console.warn(`[ElevenLabs] with-timestamps mislukt: ${tsErr.message} — fallback naar standaard TTS`);
   }
 
-  // ── Fallback: standaard TTS zonder timestamps ─────────────────────────────
-  if (!fs.existsSync(audioPath)) {
-    const ttsRes = await axios.post(
-      `${ELEVENLABS_BASE}/text-to-speech/${voiceId}`,
-      {
-        text: script,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: voiceSettings,
-        output_format: 'mp3_44100_128',
-      },
-      {
-        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-        responseType: 'arraybuffer',
-        timeout: 60000,
-      }
-    );
-    fs.writeFileSync(audioPath, Buffer.from(ttsRes.data));
-    console.log(`[ElevenLabs] Audio opgeslagen via standaard TTS (${Math.round(fs.statSync(audioPath).size / 1024)}KB)`);
-  }
+  // Alle chunks samenvoegen (zelfde codec/bitrate → binaire mp3-concatenatie is geldig)
+  fs.writeFileSync(audioPath, Buffer.concat(buffers));
+  console.log(`[ElevenLabs] Audio opgeslagen (${Math.round(fs.statSync(audioPath).size / 1024)}KB, ${chunks.length} chunks)`);
 
-  // Sla timestamps op (ook als null — renderService valt dan terug op 130wpm)
+  const wordTimings = anyTimings ? allTimings : null;
   if (wordTimings) {
     fs.writeFileSync(tsPath, JSON.stringify(wordTimings, null, 2));
-    console.log(`[ElevenLabs] Timestamps opgeslagen: ${tsPath}`);
+    console.log(`[ElevenLabs] ${wordTimings.length} woord-timestamps opgeslagen: ${tsPath}`);
   }
 
   return { audioUrl, wordTimings };

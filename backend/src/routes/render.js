@@ -24,6 +24,25 @@ const thumbnailUpload = multer({
   },
 });
 
+// POST /api/render/:jobId/share — genereer een tijdelijke publieke link (24u geldig)
+router.post('/:jobId/share', (req, res) => {
+  try {
+    const job = getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job niet gevonden' });
+    if (!job.video_url) return res.status(400).json({ error: 'Deze job heeft nog geen video' });
+
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(16).toString('hex');
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    updateJob(req.params.jobId, { share_token: token, share_expires: expires });
+
+    const { SERVER_BASE_URL } = require('../paths');
+    res.json({ share_url: `${SERVER_BASE_URL}/share/${token}`, expires_at: expires });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/render — Start een nieuwe render job (VaultBoost koppeling)
 router.post('/', async (req, res) => {
   try {
@@ -75,6 +94,12 @@ router.get('/:jobId', (req, res) => {
       id: job.id,
       thumbnail_url: job.thumbnail_url || null,
       thumbnail_options: job.thumbnail_options || [],
+      // Credit Shield / kosten-transparantie
+      estimated_credits:       job.estimated_credits ?? null,
+      credit_breakdown:        job.credit_breakdown || null,
+      credit_warning:          job.credit_warning || null,
+      credit_shield_triggered: !!job.credit_shield_triggered,
+      kie_balance:             job.kie_balance ?? null,
       partial_failure: job.partial_failure || 0,
       youtube_url: job.youtube_url || null,
       youtube_shorts_url: job.youtube_shorts_url || null,

@@ -157,8 +157,10 @@ HARD CONSTRAINTS:
    - "lighting_mood": specific lighting atmosphere matching this genre and scene energy. NOT generic "dramatic rim lighting" for non-epic content.
    - "camera_style": camera movement, max 12 words, matching the energy (gaming→fast handheld; beauty→slow macro; finance→clean static).
    Choose based on GENRE — do NOT default to history/epic values for non-history content.
-${is2D ? `9. Add "color_theme" to the root JSON: "warm"|"cool"|"neutral"|"dark"|"default" based on topic mood (NOT geography).
-10. For animated_map scenes: add "map_region" to content: "world"|"europe"|"asia"|"middle_east"|"africa"|"north_america"|"south_america"|"oceania".` : ''}
+9. For EVERY scene, add "needs_ai": true|false. TRUE only when the scene shows a CONCRETE visual object/place/person that is hard to convey with text/2D graphics (a battlefield, a temple, a creature). FALSE for abstract concepts, numbers, statistics, timelines, comparisons, lists — those work fine as 2D text/graphics. Be strict: fewer TRUE = cheaper renders.
+${durationSeconds > 60 ? `9b. LONG-FORM CHAPTER STRUCTURE (video is ${durationSeconds}s): divide the video into chapters — "Intro" (10-15% of duration), 2-4 core chapters with a short descriptive name (70-80%), "Conclusie" (10-15%, ends with outro_cta). Add "chapter": "<chapter name>" to EVERY scene. At the START of each core chapter (not Intro), insert an extra short title-card scene: template "${is2D ? 'text_focus_2d' : 'cinematic_title'}", duration_frames 45-60, content: { "title": "<chapter name>" }, script_segment: "", chapter: "<chapter name>", chapter_card: true, needs_ai: false.` : ''}
+${is2D ? `10. Add "color_theme" to the root JSON: "warm"|"cool"|"neutral"|"dark"|"default" based on topic mood (NOT geography).
+11. For animated_map scenes: add "map_region" to content: "world"|"europe"|"asia"|"middle_east"|"africa"|"north_america"|"south_america"|"oceania".` : ''}
 
 Return ONLY a JSON object, no explanation:
 
@@ -174,6 +176,7 @@ Return ONLY a JSON object, no explanation:
       "visual_focus": "person dramatically reacting to main subject",
       "lighting_mood": "specific lighting for this scene and genre",
       "camera_style": "specific camera movement for this scene",
+      "needs_ai": true,
       "facts": [],
       "comparison": null
     }
@@ -182,7 +185,7 @@ Return ONLY a JSON object, no explanation:
 
     const adaptiveResponse = await getClient().messages.create({
       model: 'claude-opus-4-5',
-      max_tokens: 4096,
+      max_tokens: durationSeconds > 60 ? 16000 : 4096, // long-form heeft veel meer scènes
       messages: [{ role: 'user', content: adaptivePrompt }],
     });
 

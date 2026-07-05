@@ -75,6 +75,21 @@ function getAllJobs() {
 
 // ── Pipeline ────────────────────────────────────────────────────────────────
 
+// Max gelijktijdige kie.ai-calls — voorkomt rate-limiting bij lange video's met veel scènes
+const MAX_CONCURRENT_KIE = parseInt(process.env.MAX_CONCURRENT_KIE || '3', 10);
+
+/** Voert worker(item, idx) uit over alle items met maximaal `limit` tegelijk. */
+async function runWithConcurrency(items, limit, worker) {
+  let next = 0;
+  const runners = Array(Math.min(limit, items.length)).fill(0).map(async () => {
+    while (next < items.length) {
+      const idx = next++;
+      await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+}
+
 // Visual presets: nieuwe render-stijlen die op een bestaande pipeline draaien
 // met een eigen kleurthema, pacing en VFX-profiel.
 const VISUAL_PRESETS = {
@@ -96,6 +111,9 @@ async function startRenderJob({ script, title, style, mode, duration, workspace_
     console.log(`[RenderService] Visual preset '${visualPreset}' → pipeline '${render_style}'`);
   }
 
+  // Duur begrenzen: 15s minimum, 600s (10 min) maximum
+  const clampedDuration = Math.max(15, Math.min(600, parseInt(duration, 10) || 60));
+
   const job = {
     id: jobId,
     title:       title || 'Untitled Short',
@@ -103,7 +121,8 @@ async function startRenderJob({ script, title, style, mode, duration, workspace_
     style:       style || 'documentaire',
     mode:        resolvedMode,
     format:      format || 'narrative',
-    duration:    duration || 60,
+    duration:    clampedDuration,
+    estimated_render_minutes: Math.max(3, Math.round(clampedDuration / 10)),
     render_style:     render_style || 'ai-cinematic',
     visual_preset:    visualPreset,
     ...(visualPreset ? { color_theme: VISUAL_PRESETS[visualPreset].color_theme } : {}),
@@ -306,7 +325,29 @@ async function runAfterEditing(jobId, job) {
       const styleAnchor  = currentJob?.style_anchor || job.style_anchor || '';
       finalScenes = [...scenes];
 
-      await Promise.allSettled(scenes.map(async (scene, idx) => {
+      // Credit Shield: onder de drempel → alle scènes 2D i.p.v. falen halverwege
+      const shieldThreshold = parseInt(process.env.CREDIT_SHIELD_THRESHOLD || '100', 10);
+      const { getCreditBalance } = require('./kieService');
+      const balance = await getCreditBalance();
+      const kieScenesCount = scenes.filter(s => !s.skip_kie).length;
+      if (balance !== null && balance < shieldThreshold) {
+        console.warn(`[CreditShield ${jobId}] Saldo ${balance} < drempel ${shieldThreshold} — ${kieScenesCount} scène(s) naar 2D-fallback`);
+        scenes.forEach(s => { s.skip_kie = true; });
+        updateJob(jobId, {
+          credit_shield_triggered: true,
+          credit_warning: `Weinig credits (saldo: ${balance}) — ${kieScenesCount} scène${kieScenesCount === 1 ? '' : 's'} worden in 2D-modus gerenderd`,
+          kie_balance: balance,
+          estimated_credits: 0,
+        });
+      } else {
+        updateJob(jobId, {
+          estimated_credits: kieScenesCount * 75,
+          credit_breakdown: `${kieScenesCount} scènes AI-beeld (~${kieScenesCount * 75} credits), ${scenes.length - kieScenesCount} scènes 2D (gratis)`,
+          ...(balance !== null ? { kie_balance: balance } : {}),
+        });
+      }
+
+      await runWithConcurrency(scenes, MAX_CONCURRENT_KIE, async (scene, idx) => {
         // Door gebruiker gemarkeerd als code-only (kostenbesparing)
         if (scene.skip_kie) {
           const updates = { background_video_url: null, template: 'text_focus_2d', kling_status: 'skipped' };
@@ -341,7 +382,7 @@ async function runAfterEditing(jobId, job) {
             saveJobs(jobs);
           }
         }
-      }));
+      });
 
       updateJob(jobId, { scenes: finalScenes, progress: 75 });
     }
@@ -377,10 +418,42 @@ async function runAfterEditing(jobId, job) {
         if (s.skip_kie) kieIndices.delete(i);
       });
 
+      // Smart Quality Selector: Claude bepaalde per scène of AI-beeld echt nodig is
+      if (intensity === 'smart') {
+        kieIndices.clear();
+        scenes.forEach((s, i) => {
+          if (s.template === 'cinematic_title' || s.template === 'outro_cta') kieIndices.add(i);
+          else if (s.needs_ai && !s.skip_kie) kieIndices.add(i);
+        });
+      }
+
+      // Credit Shield: check saldo vóór dure aanroepen; onder de drempel → 2D-fallback
+      const CREDITS_PER_KIE_SCENE = 75; // T2I (~5) + Kling I2V (~70)
+      const shieldThreshold = parseInt(process.env.CREDIT_SHIELD_THRESHOLD || '100', 10);
+      const { getCreditBalance } = require('./kieService');
+      const balance = await getCreditBalance();
+      if (balance !== null && balance < shieldThreshold && kieIndices.size > 0) {
+        const blocked = kieIndices.size;
+        console.warn(`[CreditShield ${jobId}] Saldo ${balance} < drempel ${shieldThreshold} — ${blocked} scène(s) naar 2D-fallback`);
+        kieIndices.clear();
+        updateJob(jobId, {
+          credit_shield_triggered: true,
+          credit_warning: `Weinig credits (saldo: ${balance}) — ${blocked} scène${blocked === 1 ? '' : 's'} worden in 2D-modus gerenderd`,
+          kie_balance: balance,
+        });
+      }
+
+      // Geschat kredietgebruik vastleggen zodat de gebruiker per job kan terugzien wat het kostte
+      updateJob(jobId, {
+        estimated_credits: kieIndices.size * CREDITS_PER_KIE_SCENE,
+        credit_breakdown: `${kieIndices.size} scène${kieIndices.size === 1 ? '' : 's'} AI-beeld (~${kieIndices.size * CREDITS_PER_KIE_SCENE} credits), ${scenes.length - kieIndices.size} scène${scenes.length - kieIndices.size === 1 ? '' : 's'} 2D (gratis)`,
+        ...(balance !== null ? { kie_balance: balance } : {}),
+      });
+
       const kieCount = kieIndices.size;
       console.log(`[Pipeline ${jobId}] Hybrid ${intensity}: ${kieCount} KIE-scènes van ${scenes.length} totaal — indices: [${[...kieIndices].join(',')}]`);
 
-      await Promise.allSettled(scenes.map(async (scene, idx) => {
+      await runWithConcurrency(scenes, MAX_CONCURRENT_KIE, async (scene, idx) => {
         if (kieIndices.has(idx)) {
           // Gebruik generateSimpleScene (T2I + I2V) voor KIE-scènes
           try {
@@ -401,7 +474,7 @@ async function runAfterEditing(jobId, job) {
           const jobs = loadJobs();
           if (jobs[jobId]?.scenes?.[idx]) { jobs[jobId].scenes[idx] = { ...jobs[jobId].scenes[idx], background_video_url: null, template: 'text_focus_2d', kling_status: 'skipped' }; saveJobs(jobs); }
         }
-      }));
+      });
 
       updateJob(jobId, { scenes: finalScenes, progress: 75 });
     } else if (isHybrid && !process.env.KIE_API_KEY) {
@@ -768,7 +841,11 @@ async function renderWithRemotion(jobId, job, scenes) {
     throw new Error(`Render resulteerde in leeg/corrupt bestand (${fileSize} bytes)`);
   }
 
-  console.log(`[RenderService] ✅ Render klaar: ${outputFile} (${Math.round(fileSize / 1024)}KB)`);
+  // Geheugengebruik vastleggen zodat de gebruiker ziet hoe zwaar de render was
+  const peakMemMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  updateJob(jobId, { peak_memory_mb: peakMemMb });
+
+  console.log(`[RenderService] ✅ Render klaar: ${outputFile} (${Math.round(fileSize / 1024)}KB, piekgeheugen ~${peakMemMb}MB)`);
   return outputFile;
 }
 

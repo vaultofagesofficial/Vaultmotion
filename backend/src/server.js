@@ -25,7 +25,7 @@ app.use(express.json({ limit: '10mb' }));
 const API_KEY = process.env.VAULTMOTION_API_KEY;
 if (API_KEY) {
   app.use('/api', (req, res, next) => {
-    if (req.path === '/health') return next();
+    if (req.path === '/health' || req.path === '/capabilities') return next();
     if (req.headers['x-api-key'] === API_KEY) return next();
     res.status(401).json({ error: 'Ongeldige of ontbrekende API key' });
   });
@@ -68,6 +68,44 @@ app.use('/api/script',      require('./routes/script'));
 app.use('/api/templates',   require('./routes/templates'));
 app.use('/api/voices',      require('./routes/voices'));
 app.use('/api/vaultboost',  require('./routes/vaultboost'));
+
+// Publieke deel-link (24u geldig) — buiten de API-key middleware
+app.get('/share/:token', (req, res) => {
+  try {
+    const { JOBS_FILE: jf } = require('./paths');
+    const jobs = fs.existsSync(jf) ? JSON.parse(fs.readFileSync(jf, 'utf8')) : {};
+    const job = Object.values(jobs).find(j => j.share_token === req.params.token);
+    if (!job) return res.status(404).send('<h3 style="font-family:sans-serif;color:#666;text-align:center;margin-top:80px">Link niet gevonden</h3>');
+    if (!job.share_expires || new Date(job.share_expires) < new Date()) {
+      return res.status(410).send('<h3 style="font-family:sans-serif;color:#666;text-align:center;margin-top:80px">Deze deel-link is verlopen (links zijn 24 uur geldig)</h3>');
+    }
+    // Simpele afspeelpagina
+    res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${(job.title || 'VaultMotion video').replace(/</g, '&lt;')}</title></head>
+<body style="margin:0;background:#0d0d0d;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif">
+<h2 style="color:#e8e3d8;font-weight:600;margin-bottom:16px">${(job.title || 'VaultMotion video').replace(/</g, '&lt;')}</h2>
+<video src="${job.video_url}" controls autoplay style="max-height:80vh;max-width:92vw;border-radius:12px"></video>
+<p style="color:#555;font-size:12px;margin-top:14px">Gemaakt met VaultMotion · link geldig tot ${new Date(job.share_expires).toLocaleString('nl-BE')}</p>
+</body></html>`);
+  } catch (e) {
+    res.status(500).send('Er ging iets mis');
+  }
+});
+
+// Capabilities — VaultBoost leest dit bij het openen van de koppeling
+app.get('/api/capabilities', async (req, res) => {
+  let creditBalance = null;
+  try { creditBalance = await require('./services/kieService').getCreditBalance(); } catch {}
+  res.json({
+    max_duration: 600,
+    recommended_max: 300,
+    supported_styles: ['ai-cinematic', 'ai-image', '2d', 'simple', 'hybrid', 'cinematic_noir', 'documentary', 'social_media_fast', 'luxury'],
+    supported_modes: ['epic', 'documentary', 'story'],
+    hybrid_intensities: ['smart', 'low', 'medium', 'high'],
+    words_per_second: 2.5,
+    credit_balance: creditBalance,
+    version: '1.0',
+  });
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

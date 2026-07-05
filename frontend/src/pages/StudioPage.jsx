@@ -8,6 +8,8 @@ import {
   Gamepad2, Palette, TrendingUp, Dumbbell, Cpu
 } from 'lucide-react';
 import QuickStartPanel from '../components/QuickStartPanel';
+import { StylePreviewCard, StylePreviewKeyframes } from '../components/StylePreviewCard';
+import { OnboardingTour } from '../components/OnboardingTour';
 import { useTranslation } from '../i18n';
 
 // ── Modes ───────────────────────────────────────────────────────────────────
@@ -87,7 +89,8 @@ const MODES = [
   },
 ];
 
-const DURATIONS = [15, 30, 45, 60];
+const DURATIONS = [30, 45, 60, 90, 120, 180, 240, 300];
+const MAX_CUSTOM_DURATION = 600; // 10 minuten
 
 const HIGHLIGHT_COLORS = [
   { value: '#FFD700', label: 'studio.highlight.geel',  fallback: 'Geel', class: 'bg-yellow-400' },
@@ -119,6 +122,7 @@ const COST_MATRIX = {
   'ai-image':          { credits: '~200',  time: '~8-12 min',  stars: 3, advice: 'Goede middenweg met AI-beelden' },
   '2d':                { credits: '0',     time: '~3-5 min',   stars: 2, advice: 'Ideaal voor dagelijkse content, gratis' },
   'simple':            { credits: '~600',  time: '~12-20 min', stars: 4, advice: 'Consistente AI-look per scène' },
+  'hybrid:smart':      { credits: 'variabel', time: '~6-16 min', stars: 4, advice: 'Claude kiest per scène — alleen AI waar het écht impact heeft' },
   'hybrid:low':        { credits: '~150',  time: '~6-10 min',  stars: 3, advice: 'Beste prijs/kwaliteit voor dagelijkse posts' },
   'hybrid:medium':     { credits: '~400',  time: '~10-16 min', stars: 4, advice: 'Voor belangrijke video\'s' },
   'hybrid:high':       { credits: '~800',  time: '~15-25 min', stars: 5, advice: 'Voor je beste video\'s' },
@@ -191,6 +195,7 @@ export default function StudioPage() {
   const [title,     setTitle]     = useState('');
   const [topic,     setTopic]     = useState('');
   const [duration,  setDuration]  = useState(60);
+  const [customDuration, setCustomDuration] = useState('');
   const [loading,        setLoading]        = useState(false);
   const [generating,     setGenerating]     = useState(false);
   const [analyzing,      setAnalyzing]      = useState(false);
@@ -315,6 +320,9 @@ export default function StudioPage() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
+      {/* Onboarding voor nieuwe gebruikers (localStorage-flag) */}
+      <OnboardingTour />
+
       {/* Header */}
       <div className="mb-6">
         <h1 className="heading-display text-3xl font-bold mb-1">{t('studio.title', 'Studio')}</h1>
@@ -351,21 +359,24 @@ export default function StudioPage() {
       {/* Volledige modus */}
       {studioTab === 'full' && (<>
 
-      {/* RENDER STYLE TOGGLE */}
-      <div className="flex gap-2 mb-2 p-1 bg-dark-800 border border-dark-700 rounded-xl w-fit flex-wrap">
-        {RENDER_STYLE_OPTIONS.map(rs => (
-          <button
-            key={rs.value}
-            onClick={() => setRenderStyle(rs.value)}
-            title={t(rs.descKey, rs.descFb)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all border-2"
-            style={renderStyle === rs.value
-              ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
-              : { backgroundColor: 'transparent', borderColor: 'transparent', color: '#6b7280' }}
-          >
-            {t(rs.labelKey, rs.labelFb)}
-          </button>
-        ))}
+      {/* RENDER STYLE — animated preview cards */}
+      <StylePreviewKeyframes />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-2">
+        {RENDER_STYLE_OPTIONS.map(rs => {
+          const costKey = rs.value === 'hybrid' ? `hybrid:${hybridIntensity}` : rs.value;
+          const cost = COST_MATRIX[costKey]?.credits?.replace('~', '') || '?';
+          return (
+            <StylePreviewCard
+              key={rs.value}
+              value={rs.value}
+              name={t(rs.labelKey, rs.labelFb).replace(/^[^\w]*\s?/, '')}
+              cost={cost}
+              info={t(rs.descKey, rs.descFb)}
+              active={renderStyle === rs.value}
+              onClick={() => setRenderStyle(rs.value)}
+            />
+          );
+        })}
       </div>
 
       {/* KOSTENMATRIX — zichtbaar vóór de render start */}
@@ -377,6 +388,7 @@ export default function StudioPage() {
           <p className="text-xs text-gray-400 mb-2 font-semibold">{t('studio.hybrid.label', 'Kwaliteitsschuif — hoeveel AI-video wil je?')}</p>
           <div className="flex gap-2">
             {[
+              { value: 'smart',  label: '🧠 Smart',       desc: 'AI kiest', hint: 'Claude bepaalt per scène of AI-beeld nodig is — beste prijs/kwaliteit' },
               { value: 'low',    label: '💰 Economisch',  desc: '~150 cr',  hint: 'Alleen titel + outro KIE' },
               { value: 'medium', label: '⚖️ Gebalanceerd', desc: '~400 cr', hint: 'Helft KIE + helft 2D' },
               { value: 'high',   label: '🎬 Premium',     desc: '~800 cr',  hint: 'Alle scènes KIE' },
@@ -539,22 +551,42 @@ export default function StudioPage() {
             <label className="block text-sm font-semibold text-gray-300 mb-3">
               <Clock size={14} className="inline mr-1" /> {t('studio.label.duration', 'Duur')}
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {DURATIONS.map(d => (
                 <button
                   key={d}
-                  onClick={() => setDuration(d)}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium transition-colors"
+                  onClick={() => { setDuration(d); setCustomDuration(''); }}
+                  className="py-2 px-3 rounded-lg text-sm font-medium transition-colors"
                   style={{
-                    backgroundColor: duration === d ? accentColor : undefined,
-                    color:           duration === d ? '#000' : '#9ca3af',
-                    border:          duration === d ? 'none' : '1px solid #374151',
+                    backgroundColor: duration === d && !customDuration ? accentColor : undefined,
+                    color:           duration === d && !customDuration ? '#000' : '#9ca3af',
+                    border:          duration === d && !customDuration ? 'none' : '1px solid #374151',
                   }}
                 >
-                  {d}s
+                  {d >= 60 ? `${Math.floor(d / 60)}m${d % 60 ? (d % 60) + 's' : ''}` : `${d}s`}
                 </button>
               ))}
+              <input
+                type="number"
+                min={15}
+                max={MAX_CUSTOM_DURATION}
+                value={customDuration}
+                onChange={e => {
+                  const v = e.target.value;
+                  setCustomDuration(v);
+                  const n = parseInt(v, 10);
+                  if (n >= 15 && n <= MAX_CUSTOM_DURATION) setDuration(n);
+                }}
+                placeholder={t('studio.duration.custom', 'Aangepast (s)')}
+                className="w-28 py-2 px-3 rounded-lg text-sm bg-transparent text-white placeholder-gray-600"
+                style={{ border: customDuration ? `1px solid ${accentColor}` : '1px solid #374151' }}
+              />
             </div>
+            {duration > 180 && (
+              <div className="mt-3 p-2.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.35)', color: '#fb923c' }}>
+                ⚠️ {t('studio.duration.warning', `Lange render — verwachte tijd: ~${Math.round(duration / 12)}-${Math.round(duration / 7)} minuten. Voldoende RAM vereist op Railway.`)}
+              </div>
+            )}
           </div>
         </div>
 
