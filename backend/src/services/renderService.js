@@ -810,16 +810,14 @@ async function renderWithRemotion(jobId, job, scenes) {
     throw new Error(`Remotion bundle mislukt: ${bundleErr.message}`);
   }
 
-  // Browser bepalen: geconfigureerd pad (indien geldig) → chromium op PATH → Remotion zoekt/downloadt zelf
+  // Browser bepalen: geconfigureerd pad (indien geldig), anders laat Remotion
+  // zijn eigen chrome-headless-shell downloaden. Systeem-chromium op PATH is
+  // vaak te nieuw (oude headless-modus verwijderd) en dus onbruikbaar.
   const browserExecutable = (() => {
     const configured = process.env.CHROMIUM_EXECUTABLE_PATH;
     if (configured && fs.existsSync(configured)) return configured;
-    if (configured) console.warn(`[RenderService] CHROMIUM_EXECUTABLE_PATH bestaat niet (${configured}) — zoek alternatief`);
-    try {
-      const found = execSync(process.platform === 'win32' ? 'where chromium' : 'which chromium', { encoding: 'utf8', timeout: 5000 }).split('\n')[0].trim();
-      if (found && fs.existsSync(found)) { console.log(`[RenderService] Chromium gevonden op PATH: ${found}`); return found; }
-    } catch {}
-    return undefined; // Remotion regelt zelf een browser
+    if (configured) console.warn(`[RenderService] CHROMIUM_EXECUTABLE_PATH bestaat niet (${configured}) — Remotion downloadt chrome-headless-shell`);
+    return undefined;
   })();
   let composition;
   try {
