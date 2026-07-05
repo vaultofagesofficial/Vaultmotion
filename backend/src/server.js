@@ -69,6 +69,17 @@ app.use('/api/templates',   require('./routes/templates'));
 app.use('/api/voices',      require('./routes/voices'));
 app.use('/api/vaultboost',  require('./routes/vaultboost'));
 
+// Frontend serveren op Railway (nixpacks bouwt frontend/dist tijdens install)
+const distDir = path.resolve(__dirname, '../../frontend/dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache');
+    },
+  }));
+  console.log(`🖥️  Frontend geserveerd vanuit ${distDir}`);
+}
+
 // Publieke deel-link (24u geldig) — buiten de API-key middleware
 app.get('/share/:token', (req, res) => {
   try {
@@ -117,6 +128,15 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// SPA-fallback: deep links (bv. /jobs/:id) naar index.html
+if (fs.existsSync(distDir)) {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/outputs') || req.path.startsWith('/assets') || req.path.startsWith('/share')) return next();
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
 
 // Reset scènes die vastliepen tijdens een vorige server-sessie
 function resetStuckPollingScenes() {
