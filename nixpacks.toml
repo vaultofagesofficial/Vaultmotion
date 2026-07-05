@@ -4,6 +4,7 @@ nixPkgs = ["chromium", "ffmpeg", "nodejs_20"]
 [phases.install]
 cmds = [
   "npm install --prefix backend",
+  "npm install --prefix remotion",
   "npm install --prefix frontend",
   "npm run build --prefix frontend"
 ]
