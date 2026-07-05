@@ -810,7 +810,17 @@ async function renderWithRemotion(jobId, job, scenes) {
     throw new Error(`Remotion bundle mislukt: ${bundleErr.message}`);
   }
 
-  const browserExecutable = process.env.CHROMIUM_EXECUTABLE_PATH || undefined;
+  // Browser bepalen: geconfigureerd pad (indien geldig) → chromium op PATH → Remotion zoekt/downloadt zelf
+  const browserExecutable = (() => {
+    const configured = process.env.CHROMIUM_EXECUTABLE_PATH;
+    if (configured && fs.existsSync(configured)) return configured;
+    if (configured) console.warn(`[RenderService] CHROMIUM_EXECUTABLE_PATH bestaat niet (${configured}) — zoek alternatief`);
+    try {
+      const found = execSync(process.platform === 'win32' ? 'where chromium' : 'which chromium', { encoding: 'utf8', timeout: 5000 }).split('\n')[0].trim();
+      if (found && fs.existsSync(found)) { console.log(`[RenderService] Chromium gevonden op PATH: ${found}`); return found; }
+    } catch {}
+    return undefined; // Remotion regelt zelf een browser
+  })();
   let composition;
   try {
     composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable });
