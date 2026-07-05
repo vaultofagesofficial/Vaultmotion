@@ -810,18 +810,30 @@ async function renderWithRemotion(jobId, job, scenes) {
     throw new Error(`Remotion bundle mislukt: ${bundleErr.message}`);
   }
 
-  // Browser bepalen: geconfigureerd pad (indien geldig), anders laat Remotion
-  // zijn eigen chrome-headless-shell downloaden. Systeem-chromium op PATH is
-  // vaak te nieuw (oude headless-modus verwijderd) en dus onbruikbaar.
-  const browserExecutable = (() => {
+  // Browser bepalen:
+  // 1) geldig CHROMIUM_EXECUTABLE_PATH → gebruiken
+  // 2) Linux met chromium op PATH (Railway/nix) → gebruiken in 'chrome-for-testing'
+  //    modus (nieuwe headless; oude headless is uit moderne chromium verwijderd,
+  //    en de downloadbare headless-shell mist systeemlibs zoals libnspr4 in nix)
+  // 3) anders: Remotion downloadt zelf chrome-headless-shell
+  const { browserExecutable, chromeMode } = (() => {
     const configured = process.env.CHROMIUM_EXECUTABLE_PATH;
-    if (configured && fs.existsSync(configured)) return configured;
-    if (configured) console.warn(`[RenderService] CHROMIUM_EXECUTABLE_PATH bestaat niet (${configured}) — Remotion downloadt chrome-headless-shell`);
-    return undefined;
+    if (configured && fs.existsSync(configured)) return { browserExecutable: configured, chromeMode: 'chrome-for-testing' };
+    if (configured) console.warn(`[RenderService] CHROMIUM_EXECUTABLE_PATH bestaat niet (${configured}) — zoek alternatief`);
+    if (process.platform !== 'win32') {
+      try {
+        const found = execSync('which chromium || which chromium-browser', { encoding: 'utf8', timeout: 5000 }).split('\n')[0].trim();
+        if (found && fs.existsSync(found)) {
+          console.log(`[RenderService] Chromium op PATH: ${found} (chrome-for-testing modus)`);
+          return { browserExecutable: found, chromeMode: 'chrome-for-testing' };
+        }
+      } catch {}
+    }
+    return { browserExecutable: undefined, chromeMode: 'headless-shell' };
   })();
   let composition;
   try {
-    composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable });
+    composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable, chromeMode });
     console.log(`[RenderService] Compositie: ${composition.durationInFrames} frames, ${composition.width}x${composition.height}`);
   } catch (compErr) {
     console.error('[RenderService] ❌ selectComposition mislukt:\n', compErr.stack || compErr.message);
@@ -832,7 +844,7 @@ async function renderWithRemotion(jobId, job, scenes) {
     await renderMedia({
       composition, serveUrl: bundled, codec: 'h264',
       outputLocation: outputFile, inputProps,
-      pixelFormat: 'yuv420p', crf: 23, browserExecutable,
+      pixelFormat: 'yuv420p', crf: 23, browserExecutable, chromeMode,
       onProgress: ({ progress }) => {
         if (Math.round(progress * 100) % 10 === 0) {
           console.log(`[RenderService] Render voortgang: ${Math.round(progress * 100)}%`);
