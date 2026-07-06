@@ -626,6 +626,7 @@ async function triggerRemotionRender(jobId) {
     updateJob(jobId, { status: 'completed', progress: 100, video_url: videoUrl, file_path: outputFile, completed_at: new Date().toISOString() });
     if (job.workspace_id) await notifyVaultBoost(job.workspace_id, videoUrl, outputFile);
     generateAutoThumbnails(jobId).catch(e => console.warn(`[AutoThumb ${jobId}]`, e.message));
+    require('./promptIntelligence').recordRenderResults(getJob(jobId)).catch(e => console.warn(`[PromptIntel ${jobId}]`, e.message));
   } catch (err) {
     updateJob(jobId, { status: 'failed', error: err.message });
     throw err;

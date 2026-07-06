@@ -90,6 +90,17 @@ function detectFormat(topic) {
   return 'narrative';
 }
 
+// ── Menselijkheid Engine: vaste schrijfstijl-regels voor elke script-generatie ──
+const HUMAN_STYLE_BLOCK = `
+HUMAN WRITING STYLE (mandatory — this must NOT read like AI):
+- NEVER open with: "In de wereld van...", "Het is geen geheim dat...", "Stel je voor dat...", "In deze video...", "In the world of...", "It's no secret that...", "Imagine..."
+- Vary sentence length: alternate short punchlines (3-5 words) with longer sentences (15-20 words)
+- Use concrete, specific details instead of vague generalities: not "een groot gebouw" but "een toren van 47 verdiepingen"
+- Write in the second person where possible: address the viewer directly
+- Include ONE unexpected, surprising detail the viewer would never expect
+- End sentences on an unexpected word, not the most obvious one
+- Use active verbs: not "werd gebouwd" but "bouwden ze"`;
+
 const VALID_RENDER_ENGINES = new Set(['cinematic_title', 'ken_burns', 'animated_map', 'timeline', 'stats_counter', 'fact_animation', 'data_comparison', 'outro_cta']);
 const CODE_ONLY_TEMPLATES  = new Set(['fact_animation', 'data_comparison', 'stats_counter', 'timeline', 'animated_map']);
 
@@ -161,6 +172,10 @@ HARD CONSTRAINTS:
 ${durationSeconds > 60 ? `9b. LONG-FORM CHAPTER STRUCTURE (video is ${durationSeconds}s): divide the video into chapters — "Intro" (10-15% of duration), 2-4 core chapters with a short descriptive name (70-80%), "Conclusie" (10-15%, ends with outro_cta). Add "chapter": "<chapter name>" to EVERY scene. At the START of each core chapter (not Intro), insert an extra short title-card scene: template "${is2D ? 'text_focus_2d' : 'cinematic_title'}", duration_frames 45-60, content: { "title": "<chapter name>" }, script_segment: "", chapter: "<chapter name>", chapter_card: true, needs_ai: false.` : ''}
 ${is2D ? `10. Add "color_theme" to the root JSON: "warm"|"cool"|"neutral"|"dark"|"default" based on topic mood (NOT geography).
 11. For animated_map scenes: add "map_region" to content: "world"|"europe"|"asia"|"middle_east"|"africa"|"north_america"|"south_america"|"oceania".` : ''}
+
+${require('./uniquenessService').visualDnaBlock()}
+${require('./uniquenessService').visualAvoidBlock()}
+${require('./promptIntelligence').patternsBlock()}
 
 Return ONLY a JSON object, no explanation:
 
@@ -301,7 +316,8 @@ Return ONLY a JSON object, no explanation:
       validationWarnings.forEach(w => console.warn(`[claudeAnalyzer] ⚠️  ${w.scene}.${w.field}: ${w.msg}`));
     }
 
-    return { scenes, styleAnchor, validationWarnings, templateDecisions, colorTheme };
+    require('./uniquenessService').recordScenes(scenes, styleAnchor);
+  return { scenes, styleAnchor, validationWarnings, templateDecisions, colorTheme };
   }
 
   // ── LEGACY MODE (adaptiveStrategy === false) ─────────────────────────────
@@ -681,6 +697,7 @@ Return ONLY a JSON object (not an array), no explanation:
   console.log(`[claudeAnalyzer] validatiewaarschuwingen: ${validationWarnings.length}`);
   console.log(`[claudeAnalyzer] template_decisions: ${templateDecisions.map(d => `[${d.scene}]${d.chosen_template}`).join(' ')}`);
   if (is2D) console.log(`[claudeAnalyzer] color_theme: "${colorTheme}"`);
+  require('./uniquenessService').recordScenes(scenes, styleAnchor);
   return { scenes, styleAnchor, validationWarnings, templateDecisions, colorTheme };
 }
 
@@ -752,6 +769,10 @@ async function generateScript(topic, style = 'documentaire', durationSeconds = 6
     ? `Tone: precise, forward-looking, slightly awe-inspiring. Hook: paradigm shift or unexpected capability. Body: implication-focused. CTA: thought-provoking question about the future.`
     : '';
 
+  // Uniciteit Engine: perspectief-rotatie + anti-herhaling
+  const { pickPerspective, scriptAvoidBlock, recordScript, uniquenessScore } = require('./uniquenessService');
+  const perspective = pickPerspective();
+
   const prompt = `CRITICAL: This is a ${durationSeconds}-second video. Your script MUST NOT exceed ${maxWords} words total. Count every word carefully before submitting. A script that is too long will ruin the video.
 
 Write a YouTube Shorts script about: "${topic}"
@@ -759,6 +780,11 @@ Write a YouTube Shorts script about: "${topic}"
 Style: ${style}
 Duration: ${durationSeconds} seconds — Speaking pace: ~150 words per minute (fast-paced YouTube Shorts)
 ${toneBlock ? `\n${toneBlock}\n` : ''}
+NARRATIVE PERSPECTIVE (mandatory for this video): ${perspective.hint}
+Build the entire hook and framing around this angle.
+${HUMAN_STYLE_BLOCK}
+${scriptAvoidBlock()}
+
 Rules:
 - Write in ${langName} only
 - ${structureBlock}
@@ -782,7 +808,13 @@ Return ONLY the spoken narration — no markdown headers, no bold/italic formatt
     .replace(/^[\-\*]\s+/gm, '')               // bullet points
     .replace(/\n{3,}/g, '\n\n')                // excessive blank lines
     .trim();
-  return truncateToWordLimit(cleaned, maxWords);
+  const finalScript = truncateToWordLimit(cleaned, maxWords);
+
+  // Score berekenen vóór registratie (anders vergelijkt hij met zichzelf)
+  const score = uniquenessScore(finalScript);
+  recordScript(finalScript);
+  console.log(`[Uniqueness] perspectief: ${perspective.key} | score: ${score}/100`);
+  return { script: finalScript, perspective: perspective.key, uniqueness_score: score };
 }
 
 async function generateEpicScript(topic, durationSeconds = 60, language = 'en') {
@@ -808,6 +840,8 @@ Rules:
 - FACTUAL ACCURACY: If specific facts, names, numbers, or dates are provided in the topic, use them EXACTLY as given. Do not paraphrase, alter, or guess at factual details. Omit rather than invent.
 
 Tone examples: "They were outnumbered 10 to 1. They didn't care." / "History forgot them. We won't."
+${HUMAN_STYLE_BLOCK}
+${require('./uniquenessService').scriptAvoidBlock()}
 
 Return ONLY the spoken narration text — no directions, no labels.`;
 
@@ -817,7 +851,9 @@ Return ONLY the spoken narration text — no directions, no labels.`;
     messages: [{ role: 'user', content: prompt }],
   });
 
-  return truncateToWordLimit(response.content[0].text.trim(), maxWords);
+  const finalScript = truncateToWordLimit(response.content[0].text.trim(), maxWords);
+  require('./uniquenessService').recordScript(finalScript);
+  return finalScript;
 }
 
 function selectModeFromTopic(topic) {

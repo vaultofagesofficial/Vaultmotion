@@ -45,6 +45,42 @@ function ServiceStatus({ name, url, t }) {
   );
 }
 
+// C3: Prompt Intelligence — geleerde visual-prompt patronen uit eerdere renders
+function PromptIntelligenceCard({ t }) {
+  const [intel, setIntel] = useState(null);
+  useEffect(() => {
+    axios.get('/api/prompt-intelligence').then(r => setIntel(r.data)).catch(() => {});
+  }, []);
+  if (!intel) return null;
+  return (
+    <div className="card mb-6">
+      <div className="flex items-center gap-2 mb-1">
+        <span>🧠</span>
+        <h2 className="heading-display font-semibold">{t('settings.promptintel.title', 'Prompt Intelligence')}</h2>
+      </div>
+      <p className="text-gray-500 text-sm mb-3">
+        {t('settings.promptintel.desc', 'VaultMotion leert welke visuele prompts de rijkste AI-beelden opleveren en past die patronen automatisch toe.')}
+      </p>
+      <div className="flex gap-4 text-xs mb-3" style={{ color: '#6b6b6b' }}>
+        <span>{t('settings.promptintel.renders', 'Renders geanalyseerd')}: <span className="text-white font-mono">{intel.renders_analyzed}</span></span>
+        <span>{t('settings.promptintel.samples', 'Prompt-metingen')}: <span className="text-white font-mono">{intel.results_count}</span></span>
+      </div>
+      {intel.patterns?.length > 0 ? (
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold" style={{ color: '#d4a017' }}>{t('settings.promptintel.patterns', 'Geleerde patronen')} ({new Date(intel.patterns_updated_at).toLocaleDateString('nl-BE')}):</p>
+          {intel.patterns.map((p, i) => (
+            <p key={i} className="text-xs pl-3 border-l-2" style={{ color: '#9ca3af', borderColor: '#d4a01740' }}>{p}</p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs" style={{ color: '#6b6b6b' }}>
+          {t('settings.promptintel.pending', `Patronen worden geëxtraheerd na 10 renders met AI-beelden (nu: ${intel.renders_analyzed}).`)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function VaultBoostSection({ t }) {
   const WEBHOOK_URL = 'http://localhost:3002/api/vaultboost/webhook';
   const [copied, setCopied] = useState(false);
@@ -116,6 +152,8 @@ export default function SettingsPage() {
       </div>
 
       <VaultBoostSection t={t} />
+
+      <PromptIntelligenceCard t={t} />
 
       <div className="card mb-6">
         <h2 className="heading-display font-semibold mb-1">{t('settings.services.title', 'Service Status')}</h2>

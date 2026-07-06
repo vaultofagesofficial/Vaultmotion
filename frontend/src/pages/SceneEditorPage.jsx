@@ -484,6 +484,7 @@ export default function SceneEditorPage({ job }) {
             className="w-full text-sm bg-dark-700 border border-dark-600 rounded-lg px-3 py-1.5 text-white"
           >
             <option value="neutral">{t('editor.speaking_style.neutral', '🎙️ Neutraal (standaard)')}</option>
+            <option value="conversational">{t('editor.speaking_style.conversational', '💬 Conversational — klinkt als praten, niet voorlezen')}</option>
             <option value="dramatic">{t('editor.speaking_style.dramatic', '🎭 Dramatisch — trager, meer expressie')}</option>
             <option value="energetic">{t('editor.speaking_style.energetic', '⚡ Energiek — sneller, levendiger')}</option>
           </select>

@@ -102,11 +102,13 @@ function probeAudioDuration(filePath) {
   } catch { return null; }
 }
 
-// Spreekstijlen → ElevenLabs voice_settings (Submagic-stijl)
+// Spreekstijlen → ElevenLabs voice_settings — afgesteld op menselijkheid:
+// lagere stability = meer natuurlijke variatie, hogere style = meer expressie
 const SPEAKING_STYLES = {
-  dramatic:  { stability: 0.75, similarity_boost: 0.8,  style: 0.6,  use_speaker_boost: true }, // langzamer gevoel, meer expressie
-  energetic: { stability: 0.3,  similarity_boost: 0.7,  style: 0.55, use_speaker_boost: true }, // levendiger, hogere variatie
-  neutral:   { stability: 0.5,  similarity_boost: 0.75, style: 0.3,  use_speaker_boost: true }, // huidig gedrag
+  dramatic:       { stability: 0.35, similarity_boost: 0.85, style: 0.65, use_speaker_boost: true }, // trager gevoel, volle expressie
+  energetic:      { stability: 0.45, similarity_boost: 0.75, style: 0.80, use_speaker_boost: true }, // levendig, hoge variatie
+  neutral:        { stability: 0.55, similarity_boost: 0.80, style: 0.45, use_speaker_boost: true }, // gebalanceerd, warm
+  conversational: { stability: 0.30, similarity_boost: 0.90, style: 0.55, use_speaker_boost: true }, // klinkt als praten, niet voorlezen
 };
 
 /**

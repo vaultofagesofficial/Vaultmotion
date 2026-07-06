@@ -118,6 +118,12 @@ app.get('/api/capabilities', async (req, res) => {
   });
 });
 
+// Prompt Intelligence (C3) — geleerde visual-prompt patronen
+app.get('/api/prompt-intelligence', (req, res) => {
+  try { res.json(require('./services/promptIntelligence').getIntelligence()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

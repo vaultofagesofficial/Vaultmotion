@@ -196,6 +196,11 @@ export default function StudioPage() {
   const [topic,     setTopic]     = useState('');
   const [duration,  setDuration]  = useState(60);
   const [customDuration, setCustomDuration] = useState('');
+  const [uniqueness, setUniqueness] = useState(null);
+  const [humanizing, setHumanizing] = useState(false);
+  const [humanized, setHumanized]   = useState(null); // { original, humanized }
+  const [abGenerating, setAbGenerating] = useState(false);
+  const [abVariants, setAbVariants]     = useState(null); // { variant_a, variant_b }
   const [loading,        setLoading]        = useState(false);
   const [generating,     setGenerating]     = useState(false);
   const [analyzing,      setAnalyzing]      = useState(false);
@@ -242,6 +247,44 @@ export default function StudioPage() {
     setSubtitles(s => ({ ...s, highlightColor: accentColor === '#FFD700' ? '#FFD700' : '#FFD700' }));
   }, [mode]);
 
+  async function handleGenerateAb() {
+    if (!topic.trim()) return;
+    setAbGenerating(true);
+    setError('');
+    try {
+      const { data } = await axios.post('/api/script/generate-ab', { topic, style: currentMode.style, duration, language: voicesLang, format: mode === 'epic' ? 'narrative' : format });
+      setAbVariants(data);
+    } catch (e) {
+      setError(e.response?.data?.error || 'A/B generatie mislukt');
+    } finally {
+      setAbGenerating(false);
+    }
+  }
+
+  function chooseAbVariant(which) {
+    if (!abVariants) return;
+    const chosen   = which === 'a' ? abVariants.variant_a : abVariants.variant_b;
+    const rejected = which === 'a' ? abVariants.variant_b : abVariants.variant_a;
+    setScript(chosen.script);
+    setUniqueness({ score: chosen.uniqueness_score, perspective: chosen.perspective });
+    axios.post('/api/script/ab-choice', { chosen_perspective: chosen.perspective, rejected_perspective: rejected.perspective }).catch(() => {});
+    setAbVariants(null);
+  }
+
+  async function handleHumanize() {
+    if (!script.trim()) return;
+    setHumanizing(true);
+    setError('');
+    try {
+      const { data } = await axios.post('/api/script/humanize', { script, language: voicesLang });
+      setHumanized(data);
+    } catch (e) {
+      setError(e.response?.data?.error || 'Humaniseren mislukt');
+    } finally {
+      setHumanizing(false);
+    }
+  }
+
   async function handleGenerateScript() {
     if (!topic.trim()) return;
     setGenerating(true);
@@ -250,6 +293,7 @@ export default function StudioPage() {
       const endpoint = mode === 'epic' ? '/api/script/generate-epic' : '/api/script/generate';
       const { data } = await axios.post(endpoint, { topic, style: currentMode.style, duration, language: voicesLang, format: mode === 'epic' ? 'narrative' : format });
       setScript(data.script);
+      setUniqueness(data.uniqueness_score !== undefined ? { score: data.uniqueness_score, perspective: data.perspective } : null);
     } catch (e) {
       setError(e.response?.data?.error || 'Script generatie mislukt');
     } finally {
@@ -484,9 +528,23 @@ export default function StudioPage() {
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-semibold text-gray-300">{t('studio.label.script', 'Script')}</label>
-              <span className={`text-xs font-mono ${wordCountColor}`}>
-                {wordCount} words ≈ {estimatedDur}s
-              </span>
+              <div className="flex items-center gap-2">
+                {uniqueness && (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full"
+                    title={`Vertelperspectief: ${uniqueness.perspective} — score meet hoe anders dit script is t.o.v. je vorige 5`}
+                    style={{
+                      background: uniqueness.score >= 70 ? 'rgba(74,222,128,0.12)' : uniqueness.score >= 45 ? 'rgba(251,191,36,0.12)' : 'rgba(248,113,113,0.12)',
+                      color:      uniqueness.score >= 70 ? '#4ade80' : uniqueness.score >= 45 ? '#fbbf24' : '#f87171',
+                    }}
+                  >
+                    ✨ uniciteit {uniqueness.score}/100 · {uniqueness.perspective}
+                  </span>
+                )}
+                <span className={`text-xs font-mono ${wordCountColor}`}>
+                  {wordCount} words ≈ {estimatedDur}s
+                </span>
+              </div>
             </div>
 
             <div className="flex gap-2 mb-3 items-start">
@@ -498,16 +556,50 @@ export default function StudioPage() {
                 onChange={e => setTopic(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && e.ctrlKey && handleGenerateScript()}
               />
-              <button
-                onClick={handleGenerateScript}
-                disabled={generating || !topic.trim()}
-                className="btn-secondary flex items-center gap-2 whitespace-nowrap"
-                style={{ borderColor: generating ? undefined : accentColor + '40' }}
-              >
-                {generating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                {mode === 'epic' ? t('studio.btn.generate_epic', 'Epic Script') : t('studio.btn.generate', 'Genereer')}
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleGenerateScript}
+                  disabled={generating || abGenerating || !topic.trim()}
+                  className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+                  style={{ borderColor: generating ? undefined : accentColor + '40' }}
+                >
+                  {generating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                  {mode === 'epic' ? t('studio.btn.generate_epic', 'Epic Script') : t('studio.btn.generate', 'Genereer')}
+                </button>
+                <button
+                  onClick={handleGenerateAb}
+                  disabled={generating || abGenerating || !topic.trim()}
+                  className="btn-secondary flex items-center gap-2 whitespace-nowrap text-xs"
+                  title={t('studio.btn.ab_hint', 'Genereer 2 varianten met verschillende hooks en kies de beste')}
+                >
+                  {abGenerating ? <Loader2 size={13} className="animate-spin" /> : '⚖️'}
+                  {abGenerating ? t('studio.btn.ab_busy', '2 varianten...') : t('studio.btn.ab', 'A/B Test')}
+                </button>
+              </div>
             </div>
+
+            {/* A/B variant-keuze */}
+            {abVariants && (
+              <div className="mb-3 rounded-xl border p-3" style={{ borderColor: 'rgba(212,160,23,0.35)', background: 'rgba(212,160,23,0.04)' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#d4a017' }}>⚖️ {t('studio.ab.title', 'A/B Test — kies de sterkste variant')}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {['a', 'b'].map(which => {
+                    const v = which === 'a' ? abVariants.variant_a : abVariants.variant_b;
+                    return (
+                      <div key={which}>
+                        <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: '#6b6b6b' }}>
+                          {t('studio.ab.variant', `Variant ${which.toUpperCase()}`)} · {v.perspective} · ✨{v.uniqueness_score}/100
+                        </p>
+                        <div className="text-xs rounded-lg p-2.5 max-h-40 overflow-y-auto whitespace-pre-wrap" style={{ background: '#111', color: '#d1d5db' }}>{v.script}</div>
+                        <button onClick={() => chooseAbVariant(which)} className="w-full mt-2 text-xs py-1.5 rounded-lg font-semibold text-black" style={{ background: '#d4a017' }}>
+                          {t('studio.ab.choose', `Kies ${which.toUpperCase()}`)}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="relative">
               <textarea
@@ -525,7 +617,40 @@ export default function StudioPage() {
                 {analyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                 {analyzing ? 'Analyseren...' : '✨ Analyseer'}
               </button>
+              <button
+                onClick={handleHumanize}
+                disabled={humanizing || !script.trim()}
+                className="absolute bottom-2 right-32 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                style={{ backgroundColor: '#1a1a2e', border: '1px solid #4ade8050', color: '#4ade80' }}
+                title={t('studio.humanize.hint', 'Herschrijf het script zodat het klinkt als een echt mens')}
+              >
+                {humanizing ? <Loader2 size={12} className="animate-spin" /> : null}
+                {humanizing ? 'Humaniseren...' : '🧑 Humaniseer'}
+              </button>
             </div>
+
+            {/* Voor/na humanisatie-vergelijking */}
+            {humanized && (
+              <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'rgba(74,222,128,0.35)', background: 'rgba(74,222,128,0.04)' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>🧑 {t('studio.humanize.title', 'Humanisatie — kies welke versie je gebruikt')}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: '#6b6b6b' }}>{t('studio.humanize.before', 'Voor (origineel)')}</p>
+                    <div className="text-xs rounded-lg p-2.5 max-h-40 overflow-y-auto whitespace-pre-wrap" style={{ background: '#111', color: '#9ca3af' }}>{humanized.original}</div>
+                    <button onClick={() => { setScript(humanized.original); setHumanized(null); }} className="btn-secondary w-full mt-2 text-xs py-1.5">
+                      {t('studio.humanize.keep_original', 'Behoud origineel')}
+                    </button>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: '#4ade80' }}>{t('studio.humanize.after', 'Na (gehumaniseerd)')}</p>
+                    <div className="text-xs rounded-lg p-2.5 max-h-40 overflow-y-auto whitespace-pre-wrap" style={{ background: '#111', color: '#e8e3d8', border: '1px solid rgba(74,222,128,0.25)' }}>{humanized.humanized}</div>
+                    <button onClick={() => { setScript(humanized.humanized); setHumanized(null); }} className="w-full mt-2 text-xs py-1.5 rounded-lg font-semibold text-black" style={{ background: '#4ade80' }}>
+                      {t('studio.humanize.use', 'Gebruik gehumaniseerde versie')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {recommendation && (
               <div className="mt-2 rounded-lg px-3 py-2 text-xs flex items-start justify-between gap-2" style={{ backgroundColor: '#1a1a2e', border: '1px solid #d4a01740' }}>
