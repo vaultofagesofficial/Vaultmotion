@@ -763,12 +763,28 @@ async function renderWithRemotion(jobId, job, scenes) {
   // Preset-specifieke VFX (grain/shake intensiteit)
   const presetVfx = job.visual_preset ? (VISUAL_PRESETS[job.visual_preset]?.vfx || {}) : {};
 
-  const toAbsolute  = (url) => url ? (url.startsWith('http') ? url : `${SERVER_BASE_URL}${url}`) : null;
+  // Render-time URLs: de headless browser draait in DEZELFDE container, dus
+  // assets via loopback laden — de publieke Railway-URL is traag/onbetrouwbaar
+  // vanuit de container zelf en veroorzaakte delayRender-timeouts.
+  const LOCAL_BASE = `http://127.0.0.1:${process.env.PORT || 3002}`;
+  const toRenderUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith(SERVER_BASE_URL)) return LOCAL_BASE + url.slice(SERVER_BASE_URL.length);
+    if (url.startsWith('http')) return url; // externe assets (CDN) blijven extern
+    return LOCAL_BASE + url;
+  };
+
+  // Scène-achtergronden herschrijven naar loopback
+  const scenesForRender = (scenesToUse || []).map(s => ({
+    ...s,
+    background_video_url: toRenderUrl(s.background_video_url),
+    background_image_url: toRenderUrl(s.background_image_url),
+  }));
 
   const inputProps = {
-    scenes: scenesToUse,
-    audioUrl:              toAbsolute(job.audio_url)  || null,
-    musicUrl:              toAbsolute(job.music_url)  || null,
+    scenes: scenesForRender,
+    audioUrl:              toRenderUrl(job.audio_url)  || null,
+    musicUrl:              toRenderUrl(job.music_url)  || null,
     wordTimings:           job.word_timings || [],
     subtitleSettings:      job.subtitle_settings,
     mode:                  job.mode || 'documentary',
@@ -834,7 +850,7 @@ async function renderWithRemotion(jobId, job, scenes) {
   })();
   let composition;
   try {
-    composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable, chromeMode });
+    composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable, chromeMode, timeoutInMilliseconds: 120000 });
     console.log(`[RenderService] Compositie: ${composition.durationInFrames} frames, ${composition.width}x${composition.height}`);
   } catch (compErr) {
     console.error('[RenderService] ❌ selectComposition mislukt:\n', compErr.stack || compErr.message);
@@ -846,6 +862,7 @@ async function renderWithRemotion(jobId, job, scenes) {
       composition, serveUrl: bundled, codec: 'h264',
       outputLocation: outputFile, inputProps,
       pixelFormat: 'yuv420p', crf: 23, browserExecutable, chromeMode,
+      timeoutInMilliseconds: 120000, // ruime marge voor het laden van video-assets
       onProgress: ({ progress }) => {
         if (Math.round(progress * 100) % 10 === 0) {
           console.log(`[RenderService] Render voortgang: ${Math.round(progress * 100)}%`);
