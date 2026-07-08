@@ -163,7 +163,7 @@ HARD CONSTRAINTS:
    CRITICAL: subject = exact noun from script; value = exact numeric value from script. Never combine facts across segments.
    Fact types: "count", "measurement", "duration", "date", "ratio". Fields: type, value, unit (null if none), subject.
 6. data_comparison: fill the "comparison" field with { "type": "ranking"|"scale"|"before_after"|"timeline", "unit": string, "title": string, "entries": [{"label": string, "value": number, "color": null}] }. Min 2 entries, max 4, same unit.
-7. For EVERY scene, add "visual_focus": a description of a PERSON interacting with the primary object/action from script_segment. Include person's action + specific object. Max 20 words. Never just the object alone.
+7. For EVERY scene, add "visual_focus": extract the MOST CONCRETE, SPECIFIC, VISUALLY FILMABLE moment from the script_segment. If the script mentions a specific object, food, action, or emotion, that EXACT element MUST appear literally in visual_focus. Do NOT abstract or generalize — if the script says "tears rolled down his face eating Cheetos", write "a person's face with visible tears, orange Cheetos dust on fingers, one Cheeto raised to mouth", NOT "an emotional man with a snack". Include a PERSON interacting with that exact element (action + object). Max 25 words. Never just the object alone.
 8. For EVERY scene, add:
    - "lighting_mood": specific lighting atmosphere matching this genre and scene energy. NOT generic "dramatic rim lighting" for non-epic content.
    - "camera_style": camera movement, max 12 words, matching the energy (gaming→fast handheld; beauty→slow macro; finance→clean static).
@@ -393,12 +393,12 @@ Rules:
    Example: { "type": "count", "value": 300, "unit": null, "subject": "Spartan warriors" }
    Example: { "type": "measurement", "value": 138, "unit": "meters", "subject": "pyramid height" }
    Example: { "type": "ratio", "value": "333 to 1", "unit": null, "subject": "outnumbered Spartans vs Persians" }
-8. For EVERY scene, add a "visual_focus" field: a description of a PERSON interacting with or reacting to the primary object/discovery from the script_segment. Include: (1) the person's action or emotion, (2) the specific object from the script. Max 20 words. NEVER describe just the object alone without a human element.
+8. For EVERY scene, add a "visual_focus" field: extract the MOST CONCRETE, SPECIFIC, VISUALLY FILMABLE moment from the script_segment. Include: (1) the person's action or emotion, (2) the specific object from the script — LITERALLY. If the script mentions a specific food, object, gesture or emotion, that EXACT element MUST appear in visual_focus; do NOT abstract or generalize it. Max 25 words. NEVER describe just the object alone without a human element.
    GOOD: "archaeologist carefully excavating T-shaped stone pillars at Göbekli Tepe"
    GOOD: "scientist examining corroded bronze Antikythera mechanism with interlocking gears"
-   GOOD: "researcher staring in disbelief at tightly fitted Sacsayhuamán stone blocks"
+   GOOD (script: "tears rolled down his face when he first ate Cheetos"): "man's face with visible tears, orange Cheetos dust on fingers, one Cheeto raised to his mouth"
    BAD: "ancient stone pillars in dramatic lighting" (no human element)
-   BAD: "mysterious bronze mechanism" (no person)
+   BAD: "an emotional man enjoying a snack" (generalized — the script said tears + Cheetos, so show tears + Cheetos)
    For cinematic_title and outro_cta: a person or silhouette in dramatic reaction to the main subject is fine.
 
 9. For EVERY scene, add:
@@ -933,6 +933,7 @@ Rules:
 - 1 object per sentence/thought
 - Each object: { "script_segment": "...", "visual_focus": "cinematic description of what to show, no text, photorealistic" }
 - visual_focus must be a vivid, concrete visual scene (not abstract)
+- visual_focus MUST literally include any specific object, food, action or emotion mentioned in the script_segment — never generalize ("tears + Cheetos" stays "visible tears + orange Cheetos dust", not "emotional snack moment")
 - Return ONLY the JSON array, no explanation
 
 Example:

@@ -8,7 +8,8 @@ router.post('/analyze', async (req, res) => {
     const { script, style, duration } = req.body;
     if (!script) return res.status(400).json({ error: 'Script is verplicht' });
 
-    const scenes = await analyzeScript(script, style || 'documentaire', duration || 60);
+    const result = await analyzeScript(script, style || 'documentaire', duration || 60);
+    const scenes = Array.isArray(result) ? result : (result.scenes || []);
     const wordTimings = calculateWordTimings(script, scenes);
 
     res.json({ scenes, word_timings: wordTimings });
@@ -88,14 +89,16 @@ router.post('/humanize', async (req, res) => {
       max_tokens: 2048,
       messages: [{
         role: 'user',
-        content: `Herschrijf dit videoscript zodat het klinkt als een enthousiaste, authentieke mens die dit vertelt aan een vriend — niet als een AI die een tekst voorleest.
+        content: `Herschrijf dit videoscript zodat het klinkt als een enthousiaste, authentieke mens die dit spontaan aan een vriend vertelt — niet als een voorgelezen tekst.
 
 REGELS:
-- Behoud ALLE feiten, namen, cijfers en de structuur exact
+- PARAFRASEER ELKE ZIN: geen enkele zin mag woordelijk gelijk blijven aan het origineel (behalve citaten). Gebruik andere woorden, andere zinsbouw, ander ritme — maar exact dezelfde boodschap.
+- Behoud ALLE feiten, namen, cijfers en de volgorde van de informatie exact
 - Behoud de taal (${langName}) en blijf binnen ${Math.round(wordCount * 1.1)} woorden
+- Wissel korte en lange zinnen af; gebruik spreektaal ("nou", "echt", "trouwens" — spaarzaam) en samentrekkingen waar natuurlijk
 - Voeg af en toe een kleine persoonlijke noot toe ("dit fascineerde mij omdat...", "wat ik hier eerst niet bij begreep was...") — maximaal 2 keer
-- Verwijder ALLE clichés en AI-achtige formuleringen — dit gaat vóór alles. Verboden formuleringen (herschrijf ze ALTIJD, ook in de openingszin): "Het is geen geheim dat", "In de wereld van", "Stel je voor dat", "Het is verbazingwekkend", "It's no secret that", "Imagine..."
-- Behoud de FUNCTIE van de openingszin (een sterke hook) en de call-to-action aan het einde — maar herformuleer ze als ze een cliché bevatten
+- Verwijder ALLE clichés en AI-achtige formuleringen. Verboden (herschrijf ze ALTIJD, ook in de openingszin): "Het is geen geheim dat", "In de wereld van", "Stel je voor dat", "Het is verbazingwekkend", "It's no secret that", "Imagine..."
+- Behoud de FUNCTIE van de openingszin (een sterke hook) en de call-to-action aan het einde — maar in nieuwe bewoordingen
 - Geef ALLEEN het herschreven script terug, geen uitleg, geen markdown
 
 SCRIPT:
@@ -103,7 +106,15 @@ ${script.trim()}`,
       }],
     });
 
-    res.json({ original: script.trim(), humanized: msg.content[0].text.trim() });
+    const humanized = msg.content[0].text.trim();
+    // Percentage herschreven zinnen, zodat de UI kan tonen hoeveel er echt veranderd is
+    const origSentences = script.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+    const humSet = new Set(humanized.split(/(?<=[.!?])\s+/).map(z => z.trim()));
+    const unchanged = origSentences.filter(z => humSet.has(z.trim())).length;
+    const rewritePct = origSentences.length
+      ? Math.round(100 * (1 - unchanged / origSentences.length))
+      : 0;
+    res.json({ original: script.trim(), humanized, rewrite_pct: rewritePct });
   } catch (err) {
     console.error('[POST /api/script/humanize]', err.message);
     res.status(500).json({ error: err.message });

@@ -438,14 +438,15 @@ export default function SceneEditorPage({ job }) {
               <label className="text-xs text-gray-500 block mb-1">{t('editor.subtitles.words_per_line', 'Woorden per regel')}</label>
               <select
                 value={subtitleSettings.wordsPerLine ?? 3}
-                onChange={e => setSubtitleSettings(s => ({ ...s, wordsPerLine: parseInt(e.target.value) }))}
+                onChange={e => setSubtitleSettings(s => ({ ...s, wordsPerLine: e.target.value === 'random' ? 'random' : parseInt(e.target.value) }))}
                 className="w-full text-sm bg-dark-700 border border-dark-600 rounded-lg px-3 py-1.5 text-white"
               >
-                {[1, 2, 3, 4].map(n => (
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
                   <option key={n} value={n}>
                     {n} {n === 1 ? t('editor.subtitles.word', 'woord') : t('editor.subtitles.words', 'woorden')}
                   </option>
                 ))}
+                <option value="random">🎲 {t('editor.subtitles.random', 'Willekeurig (2-6)')}</option>
               </select>
             </div>
 

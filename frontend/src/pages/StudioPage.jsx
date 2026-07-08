@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -225,6 +225,25 @@ export default function StudioPage() {
   const [voicesLang,  setVoicesLang]  = useState('en');
   const [voiceId,     setVoiceId]     = useState('EXAVITQu4vr4xnSDxMaL');
   const [voicesError, setVoicesError] = useState(false);
+  const [previewingVoice, setPreviewingVoice] = useState(false);
+  const previewAudioRef = useRef(null);
+
+  function toggleVoicePreview() {
+    const v = voices.find(x => x.voice_id === voiceId);
+    if (!v?.preview_url) return;
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+      setPreviewingVoice(false);
+      return;
+    }
+    const audio = new window.Audio(v.preview_url);
+    previewAudioRef.current = audio;
+    setPreviewingVoice(true);
+    audio.onended = () => { previewAudioRef.current = null; setPreviewingVoice(false); };
+    audio.onerror = () => { previewAudioRef.current = null; setPreviewingVoice(false); };
+    audio.play().catch(() => { previewAudioRef.current = null; setPreviewingVoice(false); });
+  }
 
   useEffect(() => {
     axios.get('/api/voices').then(r => {
@@ -632,7 +651,16 @@ export default function StudioPage() {
             {/* Voor/na humanisatie-vergelijking */}
             {humanized && (
               <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'rgba(74,222,128,0.35)', background: 'rgba(74,222,128,0.04)' }}>
-                <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>🧑 {t('studio.humanize.title', 'Humanisatie — kies welke versie je gebruikt')}</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold" style={{ color: '#4ade80' }}>🧑 {t('studio.humanize.title', 'Humanisatie — kies welke versie je gebruikt')}</p>
+                  {typeof humanized.rewrite_pct === 'number' && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80' }}>
+                      {humanized.rewrite_pct >= 10
+                        ? t('studio.humanize.pct', `${humanized.rewrite_pct}% van de zinnen herschreven`)
+                        : t('studio.humanize.already_human', 'Script was al menselijk geschreven')}
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: '#6b6b6b' }}>{t('studio.humanize.before', 'Voor (origineel)')}</p>
@@ -753,13 +781,26 @@ export default function StudioPage() {
                 {t('studio.voices.none', `Geen ${voicesLang.toUpperCase()} stemmen`)}
               </div>
             ) : (
-              <select className="input text-sm" value={voiceId} onChange={e => setVoiceId(e.target.value)}>
-                {voices.filter(v => v.lang === voicesLang).map(v => (
-                  <option key={v.voice_id} value={v.voice_id}>
-                    {v.name}{v.gender ? ` · ${v.gender === 'female' ? 'Vrouw' : 'Man'}` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <select className="input text-sm flex-1" value={voiceId} onChange={e => { if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; setPreviewingVoice(false); } setVoiceId(e.target.value); }}>
+                  {voices.filter(v => v.lang === voicesLang).map(v => (
+                    <option key={v.voice_id} value={v.voice_id}>
+                      {v.name}{v.gender ? ` · ${v.gender === 'female' ? 'Vrouw' : 'Man'}` : ''}{v.preview_url ? '' : ' (geen preview)'}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={toggleVoicePreview}
+                  disabled={!voices.find(x => x.voice_id === voiceId)?.preview_url}
+                  className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-sm bg-dark-700 hover:bg-dark-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title={previewingVoice
+                    ? t('studio.voices.stop_preview', 'Stop voorbeeld')
+                    : t('studio.voices.play_preview', 'Beluister deze stem')}
+                >
+                  {previewingVoice ? '⏸' : '▶️'}
+                </button>
+              </div>
             )}
             {voices.length > 0 && (
               <p className="text-xs mt-1.5 text-center text-green-500">
@@ -867,17 +908,23 @@ export default function StudioPage() {
 
                 <div>
                   <label className="text-xs text-gray-400 mb-1.5 block">{t('studio.label.words_per_group', 'Woorden per groep')}</label>
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-1.5 flex-wrap">
                     {[
-                      { value: 3,               label: '3' },
-                      { value: 4,               label: '4' },
-                      { value: 6,               label: '6' },
+                      { value: 1, label: '1' },
+                      { value: 2, label: '2' },
+                      { value: 3, label: '3' },
+                      { value: 4, label: '4' },
+                      { value: 5, label: '5' },
+                      { value: 6, label: '6' },
+                      { value: 7, label: '7' },
+                      { value: 8, label: '8' },
+                      { value: 'random',        label: t('studio.subtitle.random', '🎲 Willekeurig') },
                       { value: 'full_sentence', label: t('studio.subtitle.full_sentence', 'Volledige zin') },
                     ].map(opt => (
                       <button
                         key={String(opt.value)}
                         onClick={() => setSubtitles(s => ({ ...s, wordsPerLine: opt.value }))}
-                        className="flex-1 py-1.5 rounded text-xs font-medium transition-colors"
+                        className="py-1.5 px-2.5 rounded text-xs font-medium transition-colors"
                         style={{
                           backgroundColor: subtitles.wordsPerLine === opt.value ? accentColor : undefined,
                           color: subtitles.wordsPerLine === opt.value ? '#000' : '#9ca3af',

@@ -10,3 +10,4 @@ dist/
 *.webm
 backend/jobs.json
 backend/batches.json
+used_elements.json

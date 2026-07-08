@@ -3,7 +3,7 @@
  * - ElevenLabs timestamps (seconden) of fallback berekening
  * - Min 1.2s per woordgroep, 10-frame smooth cross-fade tussen groepen
  * - subtitleStyle: 'classic' = kleur+pop | 'karaoke-box' = CapCut-stijl achtergrond-box
- * - wordsPerLine: number | 'full_sentence' — 'full_sentence' toont hele zin per groep
+ * - wordsPerLine: number | 'full_sentence' | 'random' — random = 2-6 woorden per groep
  */
 import React from 'react';
 import { AbsoluteFill, useVideoConfig, interpolate, Easing } from 'remotion';
@@ -19,7 +19,7 @@ interface SubtitleSettings {
   fontSize:       'klein' | 'normaal' | 'groot';
   highlightColor: string;
   position:       'onder' | 'midden';
-  wordsPerLine?:  number | 'full_sentence';
+  wordsPerLine?:  number | 'full_sentence' | 'random';
   subtitleStyle?: 'classic' | 'karaoke-box';
 }
 
@@ -70,16 +70,35 @@ function buildSentenceGroups(words: WordTiming[]): Array<{ start: number; end: n
   return groups;
 }
 
+// Willekeurige groepsgroottes (2-6 woorden) — deterministisch per woordindex,
+// zodat elke frame exact dezelfde indeling ziet en de karaoke-timing klopt.
+function buildRandomGroups(words: WordTiming[]): Array<{ start: number; end: number }> {
+  const groups: Array<{ start: number; end: number }> = [];
+  let start = 0;
+  while (start < words.length) {
+    // Simpele deterministische hash op de startindex → grootte 2..6
+    const h = Math.abs(Math.imul(start + 7, 2654435761) ^ 0x9e3779b9);
+    const size = 2 + (h % 5);
+    const end = Math.min(start + size - 1, words.length - 1);
+    groups.push({ start, end });
+    start = end + 1;
+  }
+  return groups;
+}
+
 // Vind de groep waartoe een woordindex behoort
 function getGroupForIdx(
   idx: number,
   words: WordTiming[],
-  mode: number | 'full_sentence',
-  sentenceGroups: Array<{ start: number; end: number }>
+  mode: number | 'full_sentence' | 'random',
+  sentenceGroups: Array<{ start: number; end: number }>,
+  randomGroups?: Array<{ start: number; end: number }>
 ): { groupStart: number; groupEnd: number } {
-  if (mode === 'full_sentence') {
-    const g = sentenceGroups.find(g => idx >= g.start && idx <= g.end)
-      ?? sentenceGroups[sentenceGroups.length - 1];
+  if (mode === 'full_sentence' || mode === 'random') {
+    const list = mode === 'random' ? (randomGroups ?? []) : sentenceGroups;
+    const g = list.find(g => idx >= g.start && idx <= g.end)
+      ?? list[list.length - 1]
+      ?? { start: idx, end: idx };
     return { groupStart: g.start, groupEnd: g.end };
   }
   const n = mode as number;
@@ -94,10 +113,11 @@ function getGroupForIdx(
 function getNextGroupStart(
   idx: number,
   words: WordTiming[],
-  mode: number | 'full_sentence',
-  sentenceGroups: Array<{ start: number; end: number }>
+  mode: number | 'full_sentence' | 'random',
+  sentenceGroups: Array<{ start: number; end: number }>,
+  randomGroups?: Array<{ start: number; end: number }>
 ): number {
-  const { groupEnd } = getGroupForIdx(idx, words, mode, sentenceGroups);
+  const { groupEnd } = getGroupForIdx(idx, words, mode, sentenceGroups, randomGroups);
   return groupEnd + 1;
 }
 
@@ -109,16 +129,18 @@ export function SubtitleOverlay({ wordTimings, currentFrame, settings }: Props) 
   const isKaraoke = (settings.subtitleStyle || 'classic') === 'karaoke-box';
 
   // Karaoke-box: altijd 6 (2 rijen × 3), anders: instelling of default 3
-  const groupMode: number | 'full_sentence' = isKaraoke
+  const groupMode: number | 'full_sentence' | 'random' = isKaraoke
     ? 6
     : (settings.wordsPerLine ?? 3);
 
   // Zorg dat een numerieke waarde in [1,20] valt
-  const resolvedMode: number | 'full_sentence' = groupMode === 'full_sentence'
-    ? 'full_sentence'
-    : Math.max(1, Math.min(20, Number(groupMode) || 3));
+  const resolvedMode: number | 'full_sentence' | 'random' =
+    groupMode === 'full_sentence' || groupMode === 'random'
+      ? groupMode
+      : Math.max(1, Math.min(20, Number(groupMode) || 3));
 
   const sentenceGroups = buildSentenceGroups(wordTimings);
+  const randomGroups   = resolvedMode === 'random' ? buildRandomGroups(wordTimings) : undefined;
 
   const currentTime = currentFrame / fps;
 
@@ -138,7 +160,7 @@ export function SubtitleOverlay({ wordTimings, currentFrame, settings }: Props) 
     }
 
     if (lastIdx >= 0) {
-      const { groupEnd } = getGroupForIdx(lastIdx, wordTimings, resolvedMode, sentenceGroups);
+      const { groupEnd } = getGroupForIdx(lastIdx, wordTimings, resolvedMode, sentenceGroups, randomGroups);
       const groupLastEnd = wordTimings[groupEnd].end_time;
 
       const nextFirstIdx  = groupEnd + 1;
@@ -168,7 +190,7 @@ export function SubtitleOverlay({ wordTimings, currentFrame, settings }: Props) 
   const bottomPos    = settings.position === 'midden' ? '42%' : '170px';
   const boxTextColor = isLightColor(highlight) ? '#000000' : '#ffffff';
 
-  const { groupStart, groupEnd } = getGroupForIdx(currentIdx, wordTimings, resolvedMode, sentenceGroups);
+  const { groupStart, groupEnd } = getGroupForIdx(currentIdx, wordTimings, resolvedMode, sentenceGroups, randomGroups);
   const groupWords = wordTimings.slice(groupStart, groupEnd + 1);
 
   // ── Smooth fade-in nieuwe groep ───────────────────────────────────────────

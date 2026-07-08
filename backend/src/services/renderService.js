@@ -700,6 +700,35 @@ function getAudioDurationSec(audioFilePath) {
   }
 }
 
+// ── Scène-sync: herbereken scèneduur op echte woordtimings ──────────────────
+// Claude schat duration_frames op woordaantal, maar de echte voice-over spreekt
+// segmenten sneller of trager uit. Zonder herberekening loopt het beeld voor of
+// achter op de ondertitels. Hier krijgt elke scène exact de duur van zijn eigen
+// script_segment in de audio.
+function realignScenesToTimings(scenes, timings, fps) {
+  if (!Array.isArray(scenes) || !Array.isArray(timings) || timings.length === 0) return scenes;
+  const countWords = (s) => (s || '').trim().split(/\s+/).filter(Boolean).length;
+  const MIN_FRAMES = 45; // 1.5s ondergrens per scène
+
+  let wordIdx = 0;
+  let prevEndSec = 0;
+  let realigned = 0;
+  const out = scenes.map((sc) => {
+    const n = countWords(sc.script_segment);
+    if (n === 0 || wordIdx >= timings.length) return sc; // outro/tekstloze scène: behoud duur
+    const lastIdx = Math.min(wordIdx + n - 1, timings.length - 1);
+    const endSec = timings[lastIdx].end_time;
+    if (typeof endSec !== 'number' || !(endSec > prevEndSec)) { wordIdx = lastIdx + 1; return sc; }
+    const durFrames = Math.max(MIN_FRAMES, Math.round((endSec - prevEndSec) * fps));
+    prevEndSec = endSec;
+    wordIdx = lastIdx + 1;
+    realigned++;
+    return { ...sc, duration_frames: durFrames };
+  });
+  if (realigned > 0) console.log(`[RenderService] [SYNC] ${realigned}/${scenes.length} scènes uitgelijnd op echte woordtimings`);
+  return out;
+}
+
 // ── Remotion render ─────────────────────────────────────────────────────────
 
 async function renderWithRemotion(jobId, job, scenes) {
@@ -711,6 +740,9 @@ async function renderWithRemotion(jobId, job, scenes) {
   // en outro altijd NA het einde van de voice-over begint.
   let adjustedScenes = scenes && scenes.length > 0 ? [...scenes] : null;
   if (adjustedScenes) {
+    // SYNC: lijn scèneduur uit op de echte woordtimings vóór de audio-correcties
+    const jobTimings = getJob(jobId)?.word_timings || job.word_timings || [];
+    adjustedScenes = realignScenesToTimings(adjustedScenes, jobTimings, FPS);
     const audioFilePath = path.join(OUTPUTS_DIR, 'audio', `${jobId}.mp3`);
     if (fs.existsSync(audioFilePath)) {
       const audioDurSec = getAudioDurationSec(audioFilePath);

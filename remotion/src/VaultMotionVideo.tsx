@@ -9,6 +9,7 @@ import { Timeline }         from './templates/Timeline';
 import { StatsCounter }     from './templates/StatsCounter';
 import { OutroCTA }         from './templates/OutroCTA';
 import { FactAnimation }    from './templates/FactAnimation';
+import { SubtleFact }       from './templates/SubtleFact';
 import { DataComparison }   from './templates/DataComparison';
 import { CinematicTitle2D } from './templates/CinematicTitle2D';
 import { OutroCTA2D }       from './templates/OutroCTA2D';
@@ -207,7 +208,12 @@ export function VaultMotionVideo({ scenes, audioUrl, musicUrl, sfxUrl, wordTimin
       >
         <TransitionSeries>
           {scenes.map((scene, i) => {
-            const TemplateComponent = map[scene.template] || (is2D ? TextFocus2D : CinematicTitle);
+            let TemplateComponent = map[scene.template] || (is2D ? TextFocus2D : CinematicTitle);
+            // Bij een AI-achtergrond dubbelt de grote fact-tekst met de ondertitels:
+            // toon dan een subtiele fade-in over het beeld i.p.v. de dominante overlay.
+            if (!is2D && scene.template === 'fact_animation' && (scene.background_video_url || scene.background_image_url)) {
+              TemplateComponent = SubtleFact;
+            }
             const baseDur  = scene.duration_frames || 90;
             const isLast   = i === scenes.length - 1;
             const seqDur   = isLast ? baseDur : baseDur + TRANSITION_FRAMES;
