@@ -943,12 +943,19 @@ Example:
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
+    max_tokens: 4000, // 60s+ scripts geven 15+ scènes — 1024 kapte de array af
     messages: [{ role: 'user', content: prompt }],
   });
 
   const raw = response.content[0].text.trim();
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
+  let jsonMatch = raw.match(/\[[\s\S]*\]/);
+  // Recovery: als de respons tóch afgekapt is (geen sluitende ]), knip tot het
+  // laatste volledige object en sluit de array zelf
+  if (!jsonMatch && raw.includes('[')) {
+    const start = raw.indexOf('[');
+    const lastBrace = raw.lastIndexOf('}');
+    if (lastBrace > start) jsonMatch = [raw.slice(start, lastBrace + 1) + ']'];
+  }
   if (!jsonMatch) throw new Error('analyzeScriptSimple: geen JSON array in respons');
   const segments = JSON.parse(jsonMatch[0]);
 

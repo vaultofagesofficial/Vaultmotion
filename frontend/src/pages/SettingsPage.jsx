@@ -45,6 +45,39 @@ function ServiceStatus({ name, url, t }) {
   );
 }
 
+// API-key voor beveiligde backends (VAULTMOTION_API_KEY op Railway)
+function ApiKeyCard({ t }) {
+  const [key, setKey] = useState(() => { try { return localStorage.getItem('vm_api_key') || ''; } catch { return ''; } });
+  const [saved, setSaved] = useState(false);
+  function save() {
+    try {
+      if (key.trim()) localStorage.setItem('vm_api_key', key.trim());
+      else localStorage.removeItem('vm_api_key');
+      setSaved(true); setTimeout(() => setSaved(false), 2000);
+    } catch {}
+  }
+  return (
+    <div className="card mb-6">
+      <h2 className="heading-display font-semibold mb-1">🔑 {t('settings.apikey.title', 'API-sleutel')}</h2>
+      <p className="text-gray-500 text-sm mb-3">
+        {t('settings.apikey.desc', 'Alleen nodig als de backend beveiligd is met VAULTMOTION_API_KEY (Railway). Wordt lokaal bewaard en automatisch meegestuurd.')}
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={key}
+          onChange={e => setKey(e.target.value)}
+          placeholder={t('settings.apikey.placeholder', 'x-api-key waarde')}
+          className="input flex-1 text-sm font-mono"
+        />
+        <button onClick={save} className="btn-primary px-4 text-sm">
+          {saved ? <Check size={14} /> : t('settings.apikey.save', 'Opslaan')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // C3: Prompt Intelligence — geleerde visual-prompt patronen uit eerdere renders
 function PromptIntelligenceCard({ t }) {
   const [intel, setIntel] = useState(null);
@@ -152,6 +185,8 @@ export default function SettingsPage() {
       </div>
 
       <VaultBoostSection t={t} />
+
+      <ApiKeyCard t={t} />
 
       <PromptIntelligenceCard t={t} />
 

@@ -169,15 +169,22 @@ async function runRenderPipeline(jobId, job) {
     const isSimple = job.render_style === 'simple';
 
     if (isSimple) {
-      // Simple pipeline: direct door zonder editing-pauze
       const scenes = await analyzeScriptSimple(job.script, job.duration);
       updateJob(jobId, { scenes, status: 'editing', progress: 20 });
-      console.log(`[Pipeline ${jobId}] Simple analyse klaar (${scenes.length} scenes) — auto-continue`);
-      // Geen pauze: meteen doorgaan
-      runAfterEditing(jobId, { ...job, scenes }).catch(err => {
-        console.error(`[Pipeline ${jobId}] ❌ Fout:`, err.message);
-        updateJob(jobId, { status: 'failed', error: err.message });
-      });
+
+      // Preview of automatische flows (webhook auto_upload) gaan direct door;
+      // interactief gebruik pauzeert in de Scene Editor zodat de gebruiker
+      // visual_focus/skip-KIE kan aanpassen VÓÓR er credits verbrand worden.
+      const autoContinue = job.preview || job.vaultboost_meta?.auto_upload;
+      if (autoContinue) {
+        console.log(`[Pipeline ${jobId}] Simple analyse klaar (${scenes.length} scenes) — auto-continue (${job.preview ? 'preview' : 'auto_upload'})`);
+        runAfterEditing(jobId, { ...job, scenes }).catch(err => {
+          console.error(`[Pipeline ${jobId}] ❌ Fout:`, err.message);
+          updateJob(jobId, { status: 'failed', error: err.message });
+        });
+      } else {
+        console.log(`[Pipeline ${jobId}] Simple analyse klaar (${scenes.length} scenes) — wacht op goedkeuring in Scene Editor`);
+      }
       return;
     }
 
