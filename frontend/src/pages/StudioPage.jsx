@@ -110,6 +110,7 @@ const RENDER_STYLE_OPTIONS = [
   { value: '2d',                labelKey: 'studio.render_style.2d',       descKey: 'studio.render_style.2d_desc',       labelFb: '📐 2D-gratis',    descFb: 'Code-only, geen AI credits' },
   { value: 'simple',            labelKey: 'studio.render_style.simple',   descKey: 'studio.render_style.simple_desc',   labelFb: '🎯 Simpel',       descFb: 'T2I + I2V per scène, enkel ken_burns' },
   { value: 'hybrid',            labelKey: 'studio.render_style.hybrid',   descKey: 'studio.render_style.hybrid_desc',   labelFb: '⚡ Hybride',      descFb: 'Mix KIE + 2D op basis van kwaliteitsschuif' },
+  { value: 'illustrated',       labelKey: 'studio.render_style.illustrated', descKey: 'studio.render_style.illustrated_desc', labelFb: '🎨 Geïllustreerd', descFb: 'Stilstaande illustraties + Ken Burns — bijna gratis' },
   { value: 'cinematic_noir',    labelKey: 'studio.render_style.noir',     descKey: 'studio.render_style.noir_desc',     labelFb: '🎞️ Noir',        descFb: 'Zwart-wit hoog contrast, zware grain, intense shake' },
   { value: 'documentary',       labelKey: 'studio.render_style.docu',     descKey: 'studio.render_style.docu_desc',     labelFb: '📽️ Documentary', descFb: 'Rustige cuts, neutrale kleuren, tekstoverlays' },
   { value: 'social_media_fast', labelKey: 'studio.render_style.social',   descKey: 'studio.render_style.social_desc',   labelFb: '📱 Social Fast',  descFb: 'Max 2s per scène, grote tekst, neon (TikTok-stijl)' },
@@ -122,6 +123,7 @@ const COST_MATRIX = {
   'ai-image':          { credits: '~200',  time: '~8-12 min',  stars: 3, advice: 'Goede middenweg met AI-beelden' },
   '2d':                { credits: '0',     time: '~3-5 min',   stars: 2, advice: 'Ideaal voor dagelijkse content, gratis' },
   'simple':            { credits: '~600',  time: '~12-20 min', stars: 4, advice: 'Consistente AI-look per scène' },
+  'illustrated':       { credits: '~40',  time: '~5-8 min',   stars: 3, advice: 'Geïllustreerde explainer-stijl — bijna gratis' },
   'hybrid:smart':      { credits: 'variabel', time: '~6-16 min', stars: 4, advice: 'Claude kiest per scène — alleen AI waar het écht impact heeft' },
   'hybrid:low':        { credits: '~150',  time: '~6-10 min',  stars: 3, advice: 'Beste prijs/kwaliteit voor dagelijkse posts' },
   'hybrid:medium':     { credits: '~400',  time: '~10-16 min', stars: 4, advice: 'Voor belangrijke video\'s' },
@@ -191,6 +193,7 @@ export default function StudioPage() {
   const [mode,           setMode]           = useState('documentary');
   const [renderStyle,    setRenderStyle]    = useState('ai-cinematic');
   const [hybridIntensity, setHybridIntensity] = useState('low');
+  const [illustrationStyle, setIllustrationStyle] = useState('flat');
   const [script,    setScript]    = useState('');
   const [title,     setTitle]     = useState('');
   const [topic,     setTopic]     = useState('');
@@ -353,6 +356,7 @@ export default function StudioPage() {
         subtitleSettings: subtitles,
         render_style:     renderStyle,
         hybrid_intensity: hybridIntensity,
+        illustration_style: illustrationStyle,
         format: mode === 'epic' ? 'narrative' : format,
         preview,
       });
@@ -442,6 +446,10 @@ export default function StudioPage() {
         })}
       </div>
 
+      <p className="text-[10px] mb-2" style={{ color: '#6b6b6b' }}>
+        {t('studio.style_cards.disclaimer', 'De kaartjes zijn stijlimpressies — de "👁️ Preview"-knop toont de echte render-pipeline.')}
+      </p>
+
       {/* KOSTENMATRIX — zichtbaar vóór de render start */}
       <CostMatrix renderStyle={renderStyle} hybridIntensity={hybridIntensity} />
 
@@ -467,6 +475,33 @@ export default function StudioPage() {
               >
                 <span>{opt.label}</span>
                 <span className="text-xs mt-0.5" style={{ color: hybridIntensity === opt.value ? '#fbbf24' : '#4b5563' }}>{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ILLUSTRATIE-SUBSTIJL */}
+      {renderStyle === 'illustrated' && (
+        <div className="mb-4 p-3 rounded-xl border border-dark-700 bg-dark-800">
+          <p className="text-xs text-gray-400 mb-2 font-semibold">{t('studio.illustrated.label', 'Illustratie-stijl — welke look wil je?')}</p>
+          <div className="flex gap-2">
+            {[
+              { value: 'flat',      label: '🟦 Flat Design',      desc: 'Vlakke vormen, felle kleuren' },
+              { value: 'storybook', label: '📖 Storybook',        desc: 'Zachte aquarel, prentenboek' },
+              { value: 'motion',    label: '🔷 Motion Graphics',  desc: 'Geometrisch, corporate explainer' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setIllustrationStyle(opt.value)}
+                title={opt.desc}
+                className="flex-1 flex flex-col items-center py-2 px-1 rounded-lg text-xs font-semibold transition-all border-2"
+                style={illustrationStyle === opt.value
+                  ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
+                  : { backgroundColor: 'transparent', borderColor: '#374151', color: '#6b7280' }}
+              >
+                <span>{opt.label}</span>
+                <span className="text-xs mt-0.5" style={{ color: illustrationStyle === opt.value ? '#fbbf24' : '#4b5563' }}>{opt.desc}</span>
               </button>
             ))}
           </div>

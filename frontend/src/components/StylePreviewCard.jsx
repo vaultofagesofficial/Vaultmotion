@@ -65,6 +65,21 @@ function HybridPreview() {
   );
 }
 
+function IllustratedPreview() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(150deg, #1e3a5f, #0f2027)', overflow: 'hidden' }}>
+      {/* Vlakke illustratie-vormen: zon + heuvels, met Ken Burns zoom */}
+      <div style={{ position: 'absolute', inset: '-10%', animation: 'vmZoom 7s ease-in-out infinite' }}>
+        <div style={{ position: 'absolute', top: '16%', right: '22%', width: 18, height: 18, borderRadius: '50%', background: '#fbbf24' }} />
+        <div style={{ position: 'absolute', bottom: '-12%', left: '-6%', width: '75%', height: '55%', borderRadius: '50% 50% 0 0', background: '#2d6a4f' }} />
+        <div style={{ position: 'absolute', bottom: '-16%', right: '-10%', width: '70%', height: '48%', borderRadius: '50% 50% 0 0', background: '#40916c' }} />
+        <div style={{ position: 'absolute', bottom: '30%', left: '18%', width: 0, height: 0, borderLeft: '9px solid transparent', borderRight: '9px solid transparent', borderBottom: '16px solid #e53e3e' }} />
+      </div>
+      <span style={{ position: 'absolute', bottom: 5, left: 8, fontSize: 9, color: '#95d5b2' }}>Illustratie</span>
+    </div>
+  );
+}
+
 function NoirPreview() {
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(120deg, #000, #262626, #000)', animation: 'vmFlicker 4s linear infinite', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -111,6 +126,7 @@ const PREVIEWS = {
   '2d':                TwoDPreview,
   'simple':            SimplePreview,
   'hybrid':            HybridPreview,
+  'illustrated':       IllustratedPreview,
   'cinematic_noir':    NoirPreview,
   'documentary':       DocumentaryPreview,
   'social_media_fast': SocialFastPreview,

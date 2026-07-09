@@ -328,16 +328,75 @@ async function downloadVideo(url, outputPath) {
 
 // ── Hoofd export: genereer video's voor alle scènes ─────────────────────────
 
+// Illustratie-substijlen voor render_style='illustrated' — enkel T2I, geen I2V.
+// Elke substijl heeft een eigen prompt-suffix met kleurenpalet-instructie.
+const ILLUSTRATION_STYLES = {
+  flat: {
+    label: 'Flat Design',
+    suffix: 'flat 2D vector illustration, bold geometric shapes, vibrant saturated color palette, clean thick outlines, animated explainer video style, simple minimalist background, no photorealism',
+  },
+  storybook: {
+    label: 'Storybook',
+    suffix: 'soft watercolor storybook illustration, gentle warm pastel color palette, hand-painted texture, whimsical picture book art style, soft rounded edges, no photorealism',
+  },
+  motion: {
+    label: 'Motion Graphics',
+    suffix: 'modern motion graphics illustration, clean geometric shapes, corporate explainer video aesthetic, duotone gradient color palette with one accent color, isometric perspective, minimal flat design, no photorealism',
+  },
+};
+
 // Templates die een ankerbeeld gebruiken (image-to-video via Kling)
 const ANCHOR_TEMPLATES = new Set(['cinematic_title', 'outro_cta']);
 
 // Templates die code-only zijn — geen kie.ai aanroep nodig
 const SKIP_KIE_TEMPLATES = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
 
-async function generateKlingVideosForScenes(scenes, jobId, outputsDir, onSceneUpdate, mode = 'epic', styleAnchor = '', renderStyle = 'ai-cinematic') {
+async function generateKlingVideosForScenes(scenes, jobId, outputsDir, onSceneUpdate, mode = 'epic', styleAnchor = '', renderStyle = 'ai-cinematic', illustrationStyle = 'flat') {
   if (renderStyle === '2d') {
     console.log(`[KIE] render_style=2d — kie.ai overgeslagen voor job ${jobId}`);
     return { scenes, anchorImageUrl: null };
+  }
+
+  if (renderStyle === 'illustrated') {
+    // Geïllustreerd: enkel T2I per scène (geen I2V) — Ken Burns doet de beweging in Remotion.
+    const sub = ILLUSTRATION_STYLES[illustrationStyle] || ILLUSTRATION_STYLES.flat;
+    console.log(`[KIE] render_style=illustrated (${sub.label}) — enkel T2I, geen I2V`);
+    const updatedIll = scenes.map(s => ({ ...s }));
+    const bgDir = path.join(outputsDir, 'backgrounds');
+    if (!fs.existsSync(bgDir)) fs.mkdirSync(bgDir, { recursive: true });
+    const noText = 'no text, no words, no letters, no inscriptions, no signs';
+
+    await Promise.allSettled(scenes.map(async (scene, idx) => {
+      if (SKIP_KIE_TEMPLATES.has(scene.template)) {
+        updatedIll[idx] = { ...updatedIll[idx], kling_status: 'skipped', background_image_url: null };
+        onSceneUpdate(idx, { kling_status: 'skipped', background_image_url: null });
+        return;
+      }
+      const subject = scene.visual_focus || scene.script_segment || '';
+      const prompt = `${subject}, ${sub.suffix}, 9:16 vertical composition, ${noText}`;
+      onSceneUpdate(idx, { kling_status: 'generating', kling_prompt: prompt, kling_model: 'grok-imagine/text-to-image', kling_progress: 5 });
+      try {
+        const imageUrl = await generateImageForScene(prompt.slice(0, 2000));
+        const outFile  = path.join(bgDir, `${jobId}_scene${idx}.jpg`);
+        await downloadVideo(imageUrl, outFile);
+        // Pre-schaal naar compositieresolutie zodat Ken Burns vloeiend blijft (zelfde fix als ai-image)
+        await sharp(outFile)
+          .resize(1080, 1920, { fit: 'cover', position: 'center' })
+          .jpeg({ quality: 92 })
+          .toFile(outFile + '.tmp.jpg');
+        fs.renameSync(outFile + '.tmp.jpg', outFile);
+        const localUrl = `${SERVER_BASE_URL}/outputs/backgrounds/${jobId}_scene${idx}.jpg`;
+        updatedIll[idx] = { ...updatedIll[idx], background_image_url: localUrl, kling_status: 'completed', kling_progress: 100 };
+        onSceneUpdate(idx, { kling_status: 'completed', kling_progress: 100, background_image_url: localUrl });
+        console.log(`[KIE] Illustratie scène ${idx} ✅ (${sub.label})`);
+      } catch (err) {
+        console.warn(`[KIE] Illustratie scène ${idx} mislukt: ${err.message}`);
+        updatedIll[idx] = { ...updatedIll[idx], kling_status: 'failed', kling_error: err.message, background_image_url: null };
+        onSceneUpdate(idx, { kling_status: 'failed', kling_error: err.message, background_image_url: null });
+      }
+    }));
+
+    return { scenes: updatedIll, anchorImageUrl: null };
   }
 
   if (renderStyle === 'ai-image') {
@@ -582,4 +641,4 @@ async function generateSimpleScene(visualFocus, styleAnchor, jobId, outputsDir, 
   throw new Error(`SimpleScene I2V timeout (scène ${sceneIdx})`);
 }
 
-module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus, getCreditBalance, CREDIT_COSTS };
+module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus, getCreditBalance, CREDIT_COSTS, ILLUSTRATION_STYLES };

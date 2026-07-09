@@ -162,10 +162,11 @@ export function StaticMap2D({ content, durationInFrames, colorTheme }: Props) {
         </svg>
       </div>
 
-      {/* Script tekst onderaan */}
+      {/* Script tekst in het lege middenvlak — onderaan botste hij met de ondertitels */}
       <div style={{
         position: 'absolute',
-        left: 60, right: 60, bottom: 220,
+        left: 60, right: 60, top: '52%',
+        textAlign: 'center',
         opacity: textOp,
         transform: `translateY(${textY}px)`,
       }}>

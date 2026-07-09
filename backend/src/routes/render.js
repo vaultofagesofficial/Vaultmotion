@@ -46,13 +46,13 @@ router.post('/:jobId/share', (req, res) => {
 // POST /api/render — Start een nieuwe render job (VaultBoost koppeling)
 router.post('/', async (req, res) => {
   try {
-    const { script, title, style, duration, workspace_id, subtitleSettings, voiceKey, render_style, mode, format, preview, hybrid_intensity } = req.body;
+    const { script, title, style, duration, workspace_id, subtitleSettings, voiceKey, render_style, mode, format, preview, hybrid_intensity, illustration_style, color_theme } = req.body;
 
     if (!script || script.trim().length < 10) {
       return res.status(400).json({ error: 'Script is verplicht (min. 10 tekens)' });
     }
 
-    const result = await startRenderJob({ script, title, style, duration, workspace_id, subtitleSettings, voiceKey, render_style, mode, format, preview: !!preview, hybrid_intensity });
+    const result = await startRenderJob({ script, title, style, duration, workspace_id, subtitleSettings, voiceKey, render_style, mode, format, preview: !!preview, hybrid_intensity, illustration_style, color_theme });
 
     res.json(result);
   } catch (err) {

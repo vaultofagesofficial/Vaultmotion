@@ -99,7 +99,7 @@ const VISUAL_PRESETS = {
   luxury:            { base: '2d',     color_theme: 'luxury',  pacing: 'slow',   vfx: { grainIntensity: 0.5, shakeIntensity: 0 } },
 };
 
-async function startRenderJob({ script, title, style, mode, duration, workspace_id, subtitleSettings, voiceKey, vaultboost_meta, render_style, format, adaptive_strategy, preview, hybrid_intensity }) {
+async function startRenderJob({ script, title, style, mode, duration, workspace_id, subtitleSettings, voiceKey, vaultboost_meta, render_style, format, adaptive_strategy, preview, hybrid_intensity, illustration_style, color_theme }) {
   const jobId = uuidv4();
   const resolvedMode = mode || (style === 'epic' ? 'epic' : 'documentary');
 
@@ -127,6 +127,8 @@ async function startRenderJob({ script, title, style, mode, duration, workspace_
     visual_preset:    visualPreset,
     ...(visualPreset ? { color_theme: VISUAL_PRESETS[visualPreset].color_theme } : {}),
     hybrid_intensity: hybrid_intensity || 'low',
+    illustration_style: illustration_style || 'flat',
+    ...(color_theme ? { color_theme } : {}),
     adaptive_strategy: adaptive_strategy !== false,
     voice_key:   voiceKey || 'nl_female',
     preview:     !!preview,
@@ -193,8 +195,8 @@ async function runRenderPipeline(jobId, job) {
       scenes, style_anchor: styleAnchor, status: 'editing', progress: 20,
       ...(validationWarnings?.length  > 0 ? { validation_warnings:  validationWarnings  } : {}),
       ...(templateDecisions?.length   > 0 ? { template_decisions:   templateDecisions   } : {}),
-      // Preset-kleurthema heeft voorrang op het thema uit de analyse
-      ...(colorTheme && !job.visual_preset ? { color_theme: colorTheme } : {}),
+      // Expliciet gekozen of preset-kleurthema heeft voorrang op het thema uit de analyse
+      ...(colorTheme && !job.visual_preset && !job.color_theme ? { color_theme: colorTheme } : {}),
     });
 
     // Pipeline pauzeren — gebruiker bewerkt scènes via SceneEditor
@@ -492,40 +494,74 @@ async function runAfterEditing(jobId, job) {
     }
 
     if (useKling) {
-      // Auto-Kling via PIAPI
-      console.log(`[Pipeline ${jobId}] Stap 4: Kling video's genereren...`);
-      scenes.forEach((s, i) => {
-        if (s.lighting_mood || s.camera_style) {
-          console.log(`[Pipeline ${jobId}] Scene ${i} (${s.template}) — lighting: "${s.lighting_mood || '(fallback)'}" | camera: "${s.camera_style || '(fallback)'}"`);
+      // Credit Shield + kostenraming voor illustrated (enkel T2I ≈ 5cr/scène)
+      const isIllustrated = resolvedRenderStyle === 'illustrated';
+      let illustratedShielded = false;
+      if (isIllustrated) {
+        const { getCreditBalance, CREDIT_COSTS } = require('./kieService');
+        const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
+        const t2iScenes = scenes.filter(s => !SKIP.has(s.template)).length;
+        const estCredits = t2iScenes * (CREDIT_COSTS.t2i_grok || 5);
+        const shieldThreshold = parseInt(process.env.CREDIT_SHIELD_THRESHOLD || '100', 10);
+        const balance = await getCreditBalance();
+        if (balance !== null && balance < Math.max(estCredits, shieldThreshold / 2)) {
+          illustratedShielded = true;
+          console.warn(`[CreditShield ${jobId}] Saldo ${balance} te laag voor illustrated (${estCredits}cr) — 2D-fallback`);
+          finalScenes = scenes.map(s => ({ ...s, background_video_url: null, background_image_url: null, template: 'text_focus_2d', kling_status: 'skipped' }));
+          updateJob(jobId, {
+            credit_shield_triggered: true,
+            credit_warning: `Weinig credits (saldo: ${balance}) — illustratie-scènes worden in 2D-modus gerenderd`,
+            kie_balance: balance,
+            estimated_credits: 0,
+            scenes: finalScenes,
+            progress: 75,
+          });
+        } else {
+          updateJob(jobId, {
+            estimated_credits: estCredits,
+            credit_breakdown: `${t2iScenes} geïllustreerde beelden (~${estCredits} credits, enkel T2I — geen I2V)`,
+            ...(balance !== null ? { kie_balance: balance } : {}),
+          });
         }
-      });
-      updateJob(jobId, { status: 'generating_backgrounds', progress: 50, total_scenes: scenes.length });
+      }
 
-      const kieResult = await generateKlingVideosForScenes(
-        scenes, jobId, OUTPUTS_DIR,
-        (sceneIdx, sceneUpdates) => {
-          const jobs = loadJobs();
-          if (jobs[jobId]?.scenes?.[sceneIdx]) {
-            jobs[jobId].scenes[sceneIdx] = { ...jobs[jobId].scenes[sceneIdx], ...sceneUpdates };
-            jobs[jobId].updated_at = new Date().toISOString();
-            saveJobs(jobs);
+      if (!illustratedShielded) {
+        // Auto-Kling via PIAPI (of T2I-only bij illustrated/ai-image)
+        console.log(`[Pipeline ${jobId}] Stap 4: Kling video's genereren...`);
+        scenes.forEach((s, i) => {
+          if (s.lighting_mood || s.camera_style) {
+            console.log(`[Pipeline ${jobId}] Scene ${i} (${s.template}) — lighting: "${s.lighting_mood || '(fallback)'}" | camera: "${s.camera_style || '(fallback)'}"`);
           }
-        },
-        job.mode || 'epic',
-        job.style_anchor || '',
-        job.render_style || 'ai-cinematic'
-      );
-      finalScenes = kieResult.scenes;
-      if (kieResult.anchorImageUrl) {
-        updateJob(jobId, { anchor_image_url: kieResult.anchorImageUrl });
-        console.log(`[Pipeline ${jobId}] anchor_image_url opgeslagen: ${kieResult.anchorImageUrl}`);
+        });
+        updateJob(jobId, { status: 'generating_backgrounds', progress: 50, total_scenes: scenes.length });
+
+        const kieResult = await generateKlingVideosForScenes(
+          scenes, jobId, OUTPUTS_DIR,
+          (sceneIdx, sceneUpdates) => {
+            const jobs = loadJobs();
+            if (jobs[jobId]?.scenes?.[sceneIdx]) {
+              jobs[jobId].scenes[sceneIdx] = { ...jobs[jobId].scenes[sceneIdx], ...sceneUpdates };
+              jobs[jobId].updated_at = new Date().toISOString();
+              saveJobs(jobs);
+            }
+          },
+          job.mode || 'epic',
+          job.style_anchor || '',
+          job.render_style || 'ai-cinematic',
+          getJob(jobId)?.illustration_style || job.illustration_style || 'flat'
+        );
+        finalScenes = kieResult.scenes;
+        if (kieResult.anchorImageUrl) {
+          updateJob(jobId, { anchor_image_url: kieResult.anchorImageUrl });
+          console.log(`[Pipeline ${jobId}] anchor_image_url opgeslagen: ${kieResult.anchorImageUrl}`);
+        }
+        const failedCount = finalScenes.filter(s => s.kling_status === 'failed').length;
+        if (failedCount === finalScenes.length) {
+          updateJob(jobId, { scenes: finalScenes, status: 'failed', progress: 55, error: `Alle ${failedCount} scène-achtergronden mislukt. Klik "Opnieuw proberen" of render zonder achtergronden.` });
+          return;
+        }
+        updateJob(jobId, { scenes: finalScenes, progress: 75, partial_failure: failedCount > 0 ? failedCount : 0 });
       }
-      const failedCount = finalScenes.filter(s => s.kling_status === 'failed').length;
-      if (failedCount === finalScenes.length) {
-        updateJob(jobId, { scenes: finalScenes, status: 'failed', progress: 55, error: `Alle ${failedCount} scène-achtergronden mislukt. Klik "Opnieuw proberen" of render zonder achtergronden.` });
-        return;
-      }
-      updateJob(jobId, { scenes: finalScenes, progress: 75, partial_failure: failedCount > 0 ? failedCount : 0 });
 
     } else if (waitForMcp) {
       // Wacht op Higgsfield MCP injectie via PATCH /scene/:id/video
@@ -788,8 +824,8 @@ async function renderWithRemotion(jobId, job, scenes) {
   if (job.render_style === '2d' || job.visual_preset) {
     const COLOR_THEMES = {
       default: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'default' },
-      warm:    { primary: '#e53e3e', accent: '#f6ad55', bg: '#180a00', text: '#ffffff', label: 'warm' },
-      cool:    { primary: '#3b82f6', accent: '#93c5fd', bg: '#07101f', text: '#ffffff', label: 'cool' },
+      warm:    { primary: '#e53e3e', accent: '#f6ad55', bg: '#221207', text: '#ffffff', label: 'warm' },
+      cool:    { primary: '#3b82f6', accent: '#93c5fd', bg: '#0d1a2e', text: '#ffffff', label: 'cool' },
       neutral: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'neutral' },
       dark:    { primary: '#c53030', accent: '#00d4ff', bg: '#0f0f14', text: '#ffffff', label: 'dark' },
       noir:    { primary: '#e53e3e', accent: '#e53e3e', bg: '#000000', text: '#f5f5f5', label: 'noir' },

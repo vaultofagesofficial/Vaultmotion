@@ -8,8 +8,8 @@ export interface ColorTheme {
 
 export const COLOR_THEMES: Record<string, ColorTheme> = {
   default: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'default' },
-  warm:    { primary: '#e53e3e', accent: '#f6ad55', bg: '#180a00', text: '#ffffff', label: 'warm'    },
-  cool:    { primary: '#3b82f6', accent: '#93c5fd', bg: '#07101f', text: '#ffffff', label: 'cool'    },
+  warm:    { primary: '#e53e3e', accent: '#f6ad55', bg: '#221207', text: '#ffffff', label: 'warm'    },
+  cool:    { primary: '#3b82f6', accent: '#93c5fd', bg: '#0d1a2e', text: '#ffffff', label: 'cool'    },
   neutral: { primary: '#e53e3e', accent: '#FFD700', bg: '#111111', text: '#ffffff', label: 'neutral' },
   dark:    { primary: '#c53030', accent: '#00d4ff', bg: '#0f0f14', text: '#ffffff', label: 'dark'    },
   // Visual presets (render-stijl bibliotheek)

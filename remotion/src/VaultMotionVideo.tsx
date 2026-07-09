@@ -223,7 +223,7 @@ export function VaultMotionVideo({ scenes, audioUrl, musicUrl, sfxUrl, wordTimin
                 <TransitionSeries.Sequence durationInFrames={seqDur}>
                   <ZoomPunchWrapper enabled={vfx.zoomPunch ?? false} fps={fps}>
                     <TemplateComponent
-                      content={{ ...(scene.content || {}), facts: scene.facts || [], comparison: scene.comparison || null }}
+                      content={{ ...(scene.content || {}), script_segment: scene.script_segment || '', facts: scene.facts || [], comparison: scene.comparison || null }}
                       backgroundVideoUrl={scene.background_video_url || null}
                       backgroundImageUrl={scene.background_image_url || null}
                       durationInFrames={baseDur}
@@ -247,11 +247,14 @@ export function VaultMotionVideo({ scenes, audioUrl, musicUrl, sfxUrl, wordTimin
 
       {/* ── VFX overlays (compositie-breed, boven alle scenes) ─────────────── */}
 
-      {/* 1. Globale vignette — altijd bovenop elke scene */}
+      {/* 1. Globale vignette — bij 2D veel zachter: vlakke thema-achtergronden
+          werden anders onleesbaar donker aan de randen (foto's verdragen 0.55, tekst niet) */}
       {vfx.vignette && (
         <AbsoluteFill
           style={{
-            background:    'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%)',
+            background: is2D
+              ? 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.22) 100%)'
+              : 'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%)',
             pointerEvents: 'none',
           }}
         />

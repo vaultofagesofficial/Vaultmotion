@@ -14,6 +14,7 @@ const MODES = [
   { value: 'sport',       label: '🏆 Sport',      style: 'sport',        render_style: 'ai-cinematic' },
   { value: 'tech',        label: '🤖 Tech',       style: 'tech',         render_style: 'ai-cinematic' },
   { value: 'hybrid',     label: '⚡ Hybride',    style: 'epic',         render_style: 'hybrid'       },
+  { value: 'illustrated', label: '🎨 Geïllustreerd', style: 'documentaire', render_style: 'illustrated' },
 ];
 
 export default function QuickStartPanel({ voices, onStart, onPreview }) {
