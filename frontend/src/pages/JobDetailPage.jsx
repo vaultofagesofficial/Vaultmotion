@@ -78,6 +78,73 @@ function WaitingForBackgroundsBanner({ jobId }) {
   );
 }
 
+function CaptionsEditor({ job, jobId, onUpdated }) {
+  const { t } = useTranslation();
+  const [drafts, setDrafts] = useState(() => (job.scenes || []).map(s => s.script_segment || ''));
+  const [savingIdx, setSavingIdx] = useState(null);
+
+  const scenes = job.scenes || [];
+  const anyEdited = scenes.some(s => s.caption_edited);
+
+  async function saveScene(idx) {
+    setSavingIdx(idx);
+    try {
+      const { data } = await axios.patch(`/api/render/${jobId}/scene/${idx}/caption`, { script_segment: drafts[idx] });
+      onUpdated(data.scene, idx);
+    } catch (e) {
+      console.error('[CaptionsEditor] opslaan mislukt', e.message);
+    } finally {
+      setSavingIdx(null);
+    }
+  }
+
+  if (scenes.length === 0) return null;
+
+  return (
+    <div className="card">
+      <h3 className="font-semibold text-white mb-3 text-sm flex items-center gap-2">
+        <Captions size={15} /> {t('job.captions.title', 'Ondertitel-tekst bewerken')}
+      </h3>
+
+      {anyEdited && (
+        <div className="p-3 rounded-lg text-xs mb-3" style={{ backgroundColor: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.35)', color: '#fb923c' }}>
+          ⚠️ {t('job.captions.resync_warning', 'Tekst aangepast — dit past alleen de tekst-overlay/template aan. De voice-over en ondertitel-timing zijn NIET automatisch bijgewerkt en blijven op de oorspronkelijke tekst gebaseerd. Wil je dat de audio ook klopt, genereer dan een nieuwe render vanaf het aangepaste script in Studio.')}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {scenes.map((scene, idx) => (
+          <div key={idx} className="rounded-lg border border-dark-700 bg-dark-900 p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-gray-500">{TEMPLATE_ICONS[scene.template] || '🎞️'} {t('job.captions.scene', `Scène ${idx + 1}`, { n: idx + 1 })}</span>
+              {scene.caption_edited && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c' }}>
+                  {t('job.captions.edited', 'bewerkt — sync nog niet bijgewerkt')}
+                </span>
+              )}
+            </div>
+            <textarea
+              value={drafts[idx] ?? ''}
+              onChange={e => setDrafts(d => { const n = [...d]; n[idx] = e.target.value; return n; })}
+              rows={2}
+              className="w-full text-sm bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-white resize-none"
+            />
+            <div className="flex justify-end mt-1.5">
+              <button
+                onClick={() => saveScene(idx)}
+                disabled={savingIdx === idx || drafts[idx] === (scene.script_segment || '')}
+                className="btn-secondary text-xs px-3 py-1 disabled:opacity-40"
+              >
+                {savingIdx === idx ? t('job.captions.saving', 'Opslaan…') : t('job.captions.save', 'Opslaan')}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SceneCard({ scene, index }) {
   const { t } = useTranslation();
   const kStatus   = scene.kling_status || scene.higgsfield_status || 'pending';
@@ -521,10 +588,36 @@ export default function JobDetailPage() {
             </div>
           )}
 
+          {job.status === 'completed' && job.output_quality && (
+            <div
+              className="p-3 rounded-lg text-xs mb-3 flex items-center justify-between"
+              style={job.output_quality.acceptable
+                ? { backgroundColor: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.25)', color: '#4ade80' }
+                : { backgroundColor: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.35)', color: '#f87171' }}
+            >
+              <span>
+                {job.output_quality.acceptable ? '✅' : '⚠️'} {t('job.quality.label', 'Videokwaliteit')}: <strong>{job.output_quality.bitrate_kbps} kbps</strong> ({job.output_quality.resolution})
+              </span>
+              {job.output_quality.warning && <span style={{ color: '#f87171' }}>{job.output_quality.warning}</span>}
+            </div>
+          )}
+
           {job.status === 'completed' && job.partial_failure > 0 && (
             <div className="p-3 rounded-lg text-xs mb-3" style={{ backgroundColor: 'rgba(212,160,23,0.08)', border: '1px solid rgba(212,160,23,0.35)', color: '#d4a017' }}>
               {t('job.partial_failure', `⚠️ ${job.partial_failure} scène(s) zonder achtergrond — video is gerenderd met gradient fallback.`, { count: job.partial_failure })}
             </div>
+          )}
+
+          {job.status === 'completed' && job.scenes?.length > 0 && (
+            <CaptionsEditor
+              job={job}
+              jobId={jobId}
+              onUpdated={(scene, idx) => setJob(prev => {
+                const scenes = [...prev.scenes];
+                scenes[idx] = scene;
+                return { ...prev, scenes, needs_resync: scenes.some(s => s.caption_edited) };
+              })}
+            />
           )}
 
           {job.status === 'completed' && job.thumbnail_options?.length > 0 && (

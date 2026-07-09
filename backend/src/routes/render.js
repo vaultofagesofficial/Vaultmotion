@@ -114,6 +114,9 @@ router.get('/:jobId', (req, res) => {
       duration:            job.duration            || null,
       render_style:        job.render_style        || 'ai-cinematic',
       color_theme:         job.color_theme         || null,
+      output_quality:      job.output_quality      || null,
+      peak_memory_mb:      job.peak_memory_mb      ?? null,
+      needs_resync:        !!job.needs_resync,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -146,6 +149,43 @@ router.patch('/:jobId/scene/:sceneIdx', (req, res) => {
     };
 
     updateJob(jobId, { scenes });
+    res.json({ ok: true, scene: scenes[idx] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/render/:jobId/scene/:sceneIdx/caption — Bewerk de ondertitel-brontekst (script_segment)
+// van een scène. Dit past ALLEEN de tekst-overlay/template-tekst aan; de audio en
+// word_timings (waar de daadwerkelijke ondertitel-sync op draait) blijven ongewijzigd
+// totdat het script opnieuw volledig gerenderd wordt (nieuwe voice-over nodig).
+router.patch('/:jobId/scene/:sceneIdx/caption', (req, res) => {
+  try {
+    const { jobId, sceneIdx } = req.params;
+    const { script_segment } = req.body;
+    if (typeof script_segment !== 'string') {
+      return res.status(400).json({ error: 'script_segment (string) is verplicht' });
+    }
+
+    const job = getJob(jobId);
+    if (!job) return res.status(404).json({ error: 'Job niet gevonden' });
+
+    const idx = parseInt(sceneIdx, 10);
+    if (!job.scenes || idx < 0 || idx >= job.scenes.length) {
+      return res.status(400).json({ error: 'Scène index ongeldig' });
+    }
+
+    const { updateJob } = require('../services/renderService');
+    const scenes = [...job.scenes];
+    const original = scenes[idx].original_script_segment ?? scenes[idx].script_segment ?? '';
+    scenes[idx] = {
+      ...scenes[idx],
+      script_segment: script_segment,
+      original_script_segment: original,
+      caption_edited: script_segment !== original,
+    };
+
+    updateJob(jobId, { scenes, needs_resync: scenes.some(s => s.caption_edited) });
     res.json({ ok: true, scene: scenes[idx] });
   } catch (err) {
     res.status(500).json({ error: err.message });

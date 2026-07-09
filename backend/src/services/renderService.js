@@ -936,7 +936,11 @@ async function renderWithRemotion(jobId, job, scenes) {
     await renderMedia({
       composition, serveUrl: bundled, codec: 'h264',
       outputLocation: outputFile, inputProps,
-      pixelFormat: 'yuv420p', crf: 23, browserExecutable, chromeMode,
+      // CRF 23 (ffmpeg 'medium' default) liet zichtbare compressie-artefacten zien op
+      // vlakke kleurvlakken/tekst-overlays; 18 is vrijwel visueel lossless voor social-
+      // video zonder de bestandsgrootte onredelijk te vergroten (Submagic-achtige
+      // "glitchy compressed" klacht voorkomen)
+      pixelFormat: 'yuv420p', crf: 18, browserExecutable, chromeMode,
       timeoutInMilliseconds: 120000, // ruime marge voor het laden van video-assets
       onProgress: ({ progress }) => {
         if (Math.round(progress * 100) % 10 === 0) {
@@ -958,8 +962,51 @@ async function renderWithRemotion(jobId, job, scenes) {
   const peakMemMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
   updateJob(jobId, { peak_memory_mb: peakMemMb });
 
+  // Kwaliteitscheck: vergelijk output-bitrate met een vuistregel-minimum voor de
+  // resolutie/framerate. Te lage bitrate wijst op overcompressie (Submagic-achtige
+  // "glitchy/rasterized" klacht) — dit blokkeert de render niet, enkel een waarschuwing.
+  // 2D/tekst-templates hebben legitiem een veel lagere bitrate (vlakke kleuren,
+  // weinig entropie) — de vuistregel is bedoeld om overcompressie van AI-beeld/
+  // video-achtergronden te vangen, niet om vlakke 2D-renders af te straffen.
+  const isFlatStyle = ['2d', 'documentary', 'social_media_fast', 'luxury'].includes(job.render_style);
+  const quality = checkOutputQuality(outputFile, composition.width, composition.height, totalFrames / FPS, isFlatStyle);
+  if (quality) {
+    updateJob(jobId, { output_quality: quality });
+    if (quality.warning) console.warn(`[RenderService] [KWALITEIT] ${quality.warning}`);
+  }
+
   console.log(`[RenderService] ✅ Render klaar: ${outputFile} (${Math.round(fileSize / 1024)}KB, piekgeheugen ~${peakMemMb}MB)`);
   return outputFile;
+}
+
+// ── Output-kwaliteitscheck ────────────────────────────────────────────────────
+// Vuistregel-minimum bitrate voor h264 yuv420p op 30fps (bits per pixel per frame
+// ≈ 0.06 geldt als ondergrens voor "acceptabel" — ruim onder wat CRF 18 oplevert,
+// dus een treffer hier wijst op een echt probleem (bijv. mislukte encode-instelling).
+function checkOutputQuality(outputFile, width, height, durationSec, isFlatStyle = false) {
+  try {
+    const fileSizeBits = fs.statSync(outputFile).size * 8;
+    const actualBitrateKbps = Math.round(fileSizeBits / durationSec / 1000);
+    // Vlakke 2D/tekst-content heeft van nature veel minder entropie dan video/foto-
+    // achtergronden — 1/6e van de normale ondergrens voorkomt valse waarschuwingen.
+    const bitsPerPixelPerFrame = isFlatStyle ? 0.01 : 0.06;
+    const minExpectedKbps = Math.round((width * height * 30 * bitsPerPixelPerFrame) / 1000);
+    const ratio = actualBitrateKbps / minExpectedKbps;
+    const result = {
+      resolution: `${width}x${height}`,
+      duration_sec: Math.round(durationSec * 10) / 10,
+      bitrate_kbps: actualBitrateKbps,
+      min_expected_kbps: minExpectedKbps,
+      acceptable: ratio >= 1,
+    };
+    if (ratio < 1) {
+      result.warning = `Output-bitrate (${actualBitrateKbps}kbps) ligt onder de verwachte ondergrens (${minExpectedKbps}kbps) voor ${width}x${height} — mogelijke overcompressie`;
+    }
+    return result;
+  } catch (e) {
+    console.warn('[RenderService] Kwaliteitscheck mislukt:', e.message);
+    return null;
+  }
 }
 
 async function notifyVaultBoost(workspaceId, videoUrl, filePath) {
