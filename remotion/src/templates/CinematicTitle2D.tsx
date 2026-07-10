@@ -30,10 +30,17 @@ export function CinematicTitle2D({ content, durationInFrames, colorTheme }: Prop
   const subtitleOp = interpolate(frame, [15, 28], [0, 1], { extrapolateRight: 'clamp' });
 
   // Geometrisch patroon: 8 diagonale lijnen in achtergrond
-  const patternOp = interpolate(frame, [0, 20], [0, 0.18], { extrapolateRight: 'clamp' });
+  const patternOp = interpolate(frame, [0, 20], [0, 0.55], { extrapolateRight: 'clamp' });
+  const glowOp    = interpolate(frame, [0, 25], [0, 0.4], { extrapolateRight: 'clamp' });
 
   return (
     <AbsoluteFill style={{ backgroundColor: theme.bg, overflow: 'hidden' }}>
+      {/* Radiale gloed vult de achtergrond */}
+      <div style={{
+        position: 'absolute', inset: 0, opacity: glowOp,
+        background: `radial-gradient(circle at 30% 25%, ${theme.primary}55 0%, transparent 55%), radial-gradient(circle at 80% 80%, ${theme.accent}40 0%, transparent 50%)`,
+      }} />
+
       {/* Geometrisch patroon */}
       <svg width="1080" height="1920" style={{ position: 'absolute', top: 0, left: 0, opacity: patternOp }}>
         {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
@@ -47,7 +54,7 @@ export function CinematicTitle2D({ content, durationInFrames, colorTheme }: Prop
         ))}
         {[0, 1, 2, 3].map(i => (
           <rect key={`r${i}`} x={50 + i * 260} y={200 + i * 180} width={120} height={120}
-            fill="none" stroke={theme.accent} strokeWidth={1.5} opacity={0.5}
+            fill={theme.accent} stroke={theme.accent} strokeWidth={1.5} opacity={0.22}
             transform={`rotate(${15 + i * 12}, ${110 + i * 260}, ${260 + i * 180})`}
           />
         ))}

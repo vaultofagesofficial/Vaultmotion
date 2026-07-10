@@ -29,11 +29,18 @@ export function OutroCTA2D({ content, durationInFrames, colorTheme }: Props) {
   const ringScale  = interpolate(s, [0, 1], [0.3, 1]) * pulseBase;
   const ringSize   = 220;
 
-  const patternOp  = interpolate(frame, [0, 18], [0, 0.17], { extrapolateRight: 'clamp' });
+  const patternOp  = interpolate(frame, [0, 18], [0, 0.55], { extrapolateRight: 'clamp' });
   const subOp      = interpolate(frame, [18, 30], [0, 1], { extrapolateRight: 'clamp' });
+  const glowOp     = interpolate(frame, [0, 25], [0, 0.4], { extrapolateRight: 'clamp' });
 
   return (
     <AbsoluteFill style={{ backgroundColor: theme.bg, overflow: 'hidden' }}>
+      {/* Radiale gloed vult de achtergrond */}
+      <div style={{
+        position: 'absolute', inset: 0, opacity: glowOp,
+        background: `radial-gradient(circle at 70% 30%, ${theme.primary}55 0%, transparent 55%), radial-gradient(circle at 20% 80%, ${theme.accent}40 0%, transparent 50%)`,
+      }} />
+
       {/* Achtergrondpatroon — spiegeld t.o.v. CinematicTitle2D */}
       <svg width="1080" height="1920" style={{ position: 'absolute', top: 0, left: 0, opacity: patternOp }}>
         {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
@@ -41,6 +48,12 @@ export function OutroCTA2D({ content, durationInFrames, colorTheme }: Props) {
             x1={1280 - i * 200} y1={0}
             x2={880  - i * 200} y2={1920}
             stroke={theme.primary} strokeWidth={2}
+          />
+        ))}
+        {[0, 1, 2, 3].map(i => (
+          <rect key={`r${i}`} x={80 + i * 260} y={220 + i * 160} width={110} height={110}
+            fill={theme.accent} opacity={0.2}
+            transform={`rotate(${-15 - i * 12}, ${135 + i * 260}, ${275 + i * 160})`}
           />
         ))}
       </svg>

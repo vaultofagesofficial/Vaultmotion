@@ -169,6 +169,8 @@ HARD CONSTRAINTS:
    - "camera_style": camera movement, max 12 words, matching the energy (gaming→fast handheld; beauty→slow macro; finance→clean static).
    Choose based on GENRE — do NOT default to history/epic values for non-history content.
 9. For EVERY scene, add "needs_ai": true|false. TRUE only when the scene shows a CONCRETE visual object/place/person that is hard to convey with text/2D graphics (a battlefield, a temple, a creature). FALSE for abstract concepts, numbers, statistics, timelines, comparisons, lists — those work fine as 2D text/graphics. Be strict: fewer TRUE = cheaper renders.
+9a. stats_counter content MUST use EXACTLY these field names (never omit — an empty content object renders a meaningless placeholder number): "stat_value" (the NUMBER itself, e.g. 300, no commas/units), "stat_label" (short caption describing what the number represents, e.g. "Spartan warriors"), "prefix" (optional short label above the number, e.g. "OVER" or null), "suffix" (optional short unit after the number, e.g. "years" or null).
+   Example: "content": { "stat_value": 2000, "stat_label": "years underwater", "prefix": null, "suffix": "years" }
 ${durationSeconds > 60 ? `9b. LONG-FORM CHAPTER STRUCTURE (video is ${durationSeconds}s): divide the video into chapters — "Intro" (10-15% of duration), 2-4 core chapters with a short descriptive name (70-80%), "Conclusie" (10-15%, ends with outro_cta). Add "chapter": "<chapter name>" to EVERY scene. At the START of each core chapter (not Intro), insert an extra short title-card scene: template "${is2D ? 'text_focus_2d' : 'cinematic_title'}", duration_frames 45-60, content: { "title": "<chapter name>" }, script_segment: "", chapter: "<chapter name>", chapter_card: true, needs_ai: false.` : ''}
 ${is2D ? `10. Add "color_theme" to the root JSON: "warm"|"cool"|"neutral"|"dark"|"default" based on topic mood (NOT geography).
 11. For animated_map scenes: add "map_region" to content: "world"|"europe"|"asia"|"middle_east"|"africa"|"north_america"|"south_america"|"oceania".` : ''}
@@ -267,6 +269,15 @@ Return ONLY a JSON object, no explanation:
         subject: f.subject || f.label || null,
       })),
     }));
+
+    // fact_animation zonder facts rendert een lege "?" placeholder — degradeer naar ken_burns
+    scenes = scenes.map((scene, si) => {
+      if (scene.template === 'fact_animation' && (!scene.facts || scene.facts.length === 0)) {
+        validationWarnings.push({ scene: si, field: 'template', msg: 'fact_animation zonder facts → vervangen door ken_burns' });
+        return { ...scene, template: 'ken_burns' };
+      }
+      return scene;
+    });
 
     // ── Duration afstemmen op target ─────────────────────────────────────────
     // Bij opschalen: non-protected scènes nooit boven maxFrames.
@@ -380,6 +391,8 @@ Rules:
 4. Total duration_frames MUST equal ${durationSeconds * 30}
 5. Fill content from the script
 6. stats_counter: only include it if there is a clear, explicit number or statistic in that part of the script; if in doubt, use ken_burns instead
+6a. stats_counter content MUST use EXACTLY these field names (never omit — an empty content object renders a meaningless placeholder number): "stat_value" (the NUMBER itself, e.g. 300, no commas/units), "stat_label" (short caption describing what the number represents, e.g. "Spartan warriors"), "prefix" (optional short label above the number, e.g. "OVER" or null), "suffix" (optional short unit after the number, e.g. "years" or null).
+   Example: "content": { "stat_value": 2000, "stat_label": "years underwater", "prefix": null, "suffix": "years" }
 6b. data_comparison: only use when comparing 2-4 named entities with explicit values. Fill the "comparison" field; leave it null for all other templates. Types: "ranking" (sort by size/population/count), "scale" (physical size comparison), "before_after" (same entity at two points in time), "timeline" (events on a time axis). Max 4 entries. Use the SAME unit for all entries.
    Example: "comparison": { "type": "ranking", "unit": "million", "title": "City Populations", "entries": [{"label": "Rome", "value": 1, "color": null}, {"label": "Carthage", "value": 0.4, "color": null}] }
 7. For EVERY scene, extract "facts": an array of concrete, verifiable facts EXPLICITLY AND VERBATIM stated in script_segment. CRITICAL RULES:

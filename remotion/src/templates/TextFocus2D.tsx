@@ -13,6 +13,31 @@ interface Props {
 const SAFE_BOTTOM = 170;
 const SAFE_SIDES  = 60;
 
+// Gedeeld gevuld achtergrond-patroon zodat 2D-scènes nooit kaal ogen
+function BgFill({ frame, theme }: { frame: number; theme: ColorTheme }) {
+  const glowOp    = interpolate(frame, [0, 25], [0, 0.4], { extrapolateRight: 'clamp' });
+  const patternOp = interpolate(frame, [0, 20], [0, 0.5], { extrapolateRight: 'clamp' });
+  return (
+    <>
+      <div style={{
+        position: 'absolute', inset: 0, opacity: glowOp,
+        background: `radial-gradient(circle at 75% 20%, ${theme.primary}55 0%, transparent 55%), radial-gradient(circle at 15% 85%, ${theme.accent}40 0%, transparent 50%)`,
+      }} />
+      <svg width="1080" height="1920" style={{ position: 'absolute', top: 0, left: 0, opacity: patternOp }}>
+        {[0, 1, 2, 3, 4, 5].map(i => (
+          <line key={i} x1={-300 + i * 260} y1={0} x2={100 + i * 260} y2={1920} stroke={theme.primary} strokeWidth={2} />
+        ))}
+        {[0, 1, 2].map(i => (
+          <rect key={`r${i}`} x={620 + i * 40} y={140 + i * 260} width={100} height={100}
+            fill={theme.accent} opacity={0.2}
+            transform={`rotate(${20 + i * 15}, ${670 + i * 40}, ${190 + i * 260})`}
+          />
+        ))}
+      </svg>
+    </>
+  );
+}
+
 // ── Variant 0: Centered Quote ─────────────────────────────────────────────────
 // Grote quote-aanhalingstekens, gecentreerde tekst, spring-in van onderaf
 function CenteredQuote({ text, frame, fps, theme }: { text: string; frame: number; fps: number; theme: ColorTheme }) {
@@ -24,7 +49,8 @@ function CenteredQuote({ text, frame, fps, theme }: { text: string; frame: numbe
   const accentOp   = interpolate(frame, [12, 28], [0, 1], { extrapolateRight: 'clamp' });
 
   return (
-    <AbsoluteFill style={{ backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+      <BgFill frame={frame} theme={theme} />
       {/* Grote aanhalingstekens als achtergrond-element */}
       <div style={{
         position: 'absolute', top: '18%', left: 50,
@@ -64,7 +90,8 @@ function LeftAlignedBold({ text, frame, fps, theme }: { text: string; frame: num
   const dotOp = interpolate(frame, [14, 24], [0, 1], { extrapolateRight: 'clamp' });
 
   return (
-    <AbsoluteFill style={{ backgroundColor: theme.bg }}>
+    <AbsoluteFill style={{ backgroundColor: theme.bg, overflow: 'hidden' }}>
+      <BgFill frame={frame} theme={theme} />
       {/* Verticale accentbalk */}
       <div style={{
         position: 'absolute', left: SAFE_SIDES, top: '50%',
@@ -109,7 +136,8 @@ function HeadlineSplit({ text, frame, fps, theme }: { text: string; frame: numbe
   const lineW = interpolate(frame, [5, 25], [0, 320], { extrapolateRight: 'clamp' });
 
   return (
-    <AbsoluteFill style={{ backgroundColor: theme.bg, justifyContent: 'center' }}>
+    <AbsoluteFill style={{ backgroundColor: theme.bg, justifyContent: 'center', overflow: 'hidden' }}>
+      <BgFill frame={frame} theme={theme} />
       <div style={{ padding: `0 ${SAFE_SIDES}px` }}>
         {/* Grote headline in accentkleur */}
         <div style={{

@@ -18,9 +18,18 @@ if (!fs.existsSync(BACKGROUNDS_DIR)) {
 }
 
 /**
- * Bouw een zoekterm op per template + scène inhoud.
+ * Bouw een zoekterm op — primair de visual_focus van de scène (concrete,
+ * letterlijke onderwerp-beschrijving, zie de visual_focus-letterlijkheid-fix),
+ * met een template-gebaseerde fallback als visual_focus ontbreekt.
  */
-function buildSearchQuery(template, content) {
+function buildSearchQuery(template, content, visualFocus) {
+  if (visualFocus && visualFocus.trim()) {
+    // Pexels zoekt beter op korte, concrete steekwoorden dan lange zinnen —
+    // pak de eerste 4-5 betekenisvolle woorden uit de visual_focus.
+    const words = visualFocus.trim().split(/\s+/).slice(0, 5).join(' ');
+    return words;
+  }
+
   const base = {
     cinematic_title:  'cinematic dark dramatic atmosphere',
     ken_burns:        'documentary historical landscape slow motion',
@@ -112,13 +121,21 @@ async function downloadVideo(url, filename) {
  * @param {string} jobId
  * @returns {Array} scenes met background_video_path toegevoegd
  */
+// Data-visualisatie-templates zijn code-only en hebben geen video-achtergrond nodig
+// (zelfde set als kieService.js's SKIP_KIE_TEMPLATES).
+const SKIP_TEMPLATES = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
+
 async function fetchBackgroundsForScenes(scenes, jobId) {
   const results = [...scenes];
 
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
+    if (SKIP_TEMPLATES.has(scene.template)) {
+      results[i] = { ...results[i], background_video_url: null };
+      continue;
+    }
     try {
-      const query = buildSearchQuery(scene.template, scene.content || {});
+      const query = buildSearchQuery(scene.template, scene.content || {}, scene.visual_focus);
       console.log(`[Pexels] Scène ${i + 1}/${scenes.length}: zoeken naar "${query}"`);
 
       const { url, videoId } = await searchVideo(query);

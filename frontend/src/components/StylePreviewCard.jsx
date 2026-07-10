@@ -80,6 +80,16 @@ function IllustratedPreview() {
   );
 }
 
+function StockPreview() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: '#0f172a', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: '-15%', animation: 'vmZoom 8s ease-in-out infinite', background: 'linear-gradient(135deg, #164e63 0%, #0f172a 60%)' }} />
+      <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'rgba(74,222,128,0.15)', color: '#4ade80', fontWeight: 700 }}>€0</div>
+      <span style={{ position: 'absolute', bottom: 5, left: 8, fontSize: 9, color: '#7dd3fc' }}>📹 Stock</span>
+    </div>
+  );
+}
+
 function NoirPreview() {
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(120deg, #000, #262626, #000)', animation: 'vmFlicker 4s linear infinite', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -127,6 +137,7 @@ const PREVIEWS = {
   'simple':            SimplePreview,
   'hybrid':            HybridPreview,
   'illustrated':       IllustratedPreview,
+  'stock':             StockPreview,
   'cinematic_noir':    NoirPreview,
   'documentary':       DocumentaryPreview,
   'social_media_fast': SocialFastPreview,

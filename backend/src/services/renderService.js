@@ -316,10 +316,11 @@ async function runAfterEditing(jobId, job) {
     const is2D        = resolvedRenderStyle === '2d';
     const isSimple    = resolvedRenderStyle === 'simple';
     const isHybrid    = resolvedRenderStyle === 'hybrid';
-    const isAiImage   = !is2D && !isSimple && !isHybrid && resolvedRenderStyle === 'ai-image';
+    const isStock     = resolvedRenderStyle === 'stock';
+    const isAiImage   = !is2D && !isSimple && !isHybrid && !isStock && resolvedRenderStyle === 'ai-image';
     const isPreview   = !!(getJob(jobId)?.preview || job.preview);
-    const useKling    = !is2D && !isSimple && !isHybrid && !isPreview && !!process.env.KIE_API_KEY;
-    const waitForMcp  = !is2D && !isSimple && !isHybrid && !isAiImage && !isPreview && !process.env.KIE_API_KEY;
+    const useKling    = !is2D && !isSimple && !isHybrid && !isStock && !isPreview && !!process.env.KIE_API_KEY;
+    const waitForMcp  = !is2D && !isSimple && !isHybrid && !isStock && !isAiImage && !isPreview && !process.env.KIE_API_KEY;
 
     if (isPreview) {
       console.log(`[Pipeline ${jobId}] PREVIEW-modus — KIE overgeslagen, gradient-fallbacks worden gebruikt`);
@@ -392,6 +393,24 @@ async function runAfterEditing(jobId, job) {
           }
         }
       });
+
+      updateJob(jobId, { scenes: finalScenes, progress: 75 });
+    }
+
+    if (isStock) {
+      // Stock Footage: gratis Pexels-video's per scène op basis van visual_focus —
+      // geen kie.ai-credits verbruikt. Scènes zonder relevant Pexels-resultaat
+      // vallen terug op de 2D-tekst-template (text_focus_2d).
+      console.log(`[Pipeline ${jobId}] STOCK-modus — gratis Pexels-achtergronden...`);
+      updateJob(jobId, { status: 'generating_backgrounds', progress: 50, total_scenes: scenes.length, estimated_credits: 0, credit_breakdown: 'Pexels stock footage — 0 credits (gratis)' });
+
+      const { fetchBackgroundsForScenes } = require('./pexelsService');
+      const withStock = await fetchBackgroundsForScenes(scenes, jobId);
+      finalScenes = withStock.map(s => ({
+        ...s,
+        template: s.background_video_url ? s.template : 'text_focus_2d',
+        kling_status: s.background_video_url ? 'completed' : 'skipped',
+      }));
 
       updateJob(jobId, { scenes: finalScenes, progress: 75 });
     }

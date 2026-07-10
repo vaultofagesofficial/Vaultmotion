@@ -135,18 +135,27 @@ function SortableSceneCard({ scene, index, onChange, onDelete, t, theme, renderS
 
   return (
     <div ref={setNodeRef} style={style} className="rounded-xl border border-dark-700 bg-dark-800 p-4 mb-3">
-      <div className="flex items-start gap-3">
-        <button
-          {...attributes}
-          {...listeners}
-          className="mt-1 text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing"
-        >
-          <GripVertical size={18} />
-        </button>
+      <div className="flex flex-col sm:flex-row items-start gap-3">
+        <div className="flex items-center gap-2 sm:contents">
+          <button
+            {...attributes}
+            {...listeners}
+            className="mt-1 text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0"
+          >
+            <GripVertical size={18} />
+          </button>
 
-        <ScenePreviewThumb scene={scene} theme={theme} onClick={onPreview} />
+          <ScenePreviewThumb scene={scene} theme={theme} onClick={onPreview} />
 
-        <div className="flex-1 space-y-3">
+          <button
+            onClick={onDelete}
+            className="ml-auto sm:hidden mt-1 text-gray-600 hover:text-red-400 transition-colors shrink-0"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 min-w-0 w-full space-y-3">
           <div className="flex items-center gap-3">
             <span className="text-mono text-xs w-16" style={{ color: '#6b6b6b' }}>
               {t('editor.scene.label', `Scène ${index + 1}`, { n: index + 1 })}
@@ -251,7 +260,7 @@ function SortableSceneCard({ scene, index, onChange, onDelete, t, theme, renderS
 
         <button
           onClick={onDelete}
-          className="mt-1 text-gray-600 hover:text-red-400 transition-colors"
+          className="hidden sm:block mt-1 text-gray-600 hover:text-red-400 transition-colors shrink-0"
         >
           <Trash2 size={16} />
         </button>
@@ -331,9 +340,9 @@ export default function SceneEditorPage({ job }) {
   }
 
   return (
-    <div className="flex h-full min-h-screen">
+    <div className="flex flex-col lg:flex-row min-h-screen">
       {previewScene && <ScenePreviewModal scene={previewScene} theme={theme} onClose={() => setPreviewScene(null)} />}
-      <div className="flex-1 p-6 overflow-y-auto">
+      <div className="flex-1 min-w-0 p-4 sm:p-6 overflow-y-auto">
         <div className="max-w-2xl mx-auto">
           <h1 className="heading-display text-2xl font-bold mb-1">{t('editor.title', 'Scène Editor')}</h1>
           <p className="text-gray-400 text-sm mb-6">
@@ -407,7 +416,7 @@ export default function SceneEditorPage({ job }) {
         </div>
       </div>
 
-      <div className="w-72 border-l border-dark-700 p-5 overflow-y-auto bg-dark-800 space-y-6">
+      <div className="w-full lg:w-72 shrink-0 border-t lg:border-t-0 lg:border-l border-dark-700 p-4 sm:p-5 overflow-y-auto bg-dark-800 space-y-6">
         <div>
           <h3 className="heading-display text-sm mb-3">{t('editor.subtitles.title', 'Ondertitels')}</h3>
           <div className="space-y-3">
