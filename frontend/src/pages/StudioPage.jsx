@@ -509,7 +509,7 @@ export default function StudioPage() {
       )}
 
       {/* MODE SELECTOR */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-6">
         {MODES.map(m => {
           const Icon    = m.icon;
           const active  = mode === m.value;
@@ -517,15 +517,15 @@ export default function StudioPage() {
             <button
               key={m.value}
               onClick={() => setMode(m.value)}
-              className={`relative rounded-xl border-2 p-4 text-left transition-all ${
+              className={`relative rounded-xl border-2 p-3 sm:p-4 text-left transition-all min-w-0 ${
                 active ? m.accent + ' scale-[1.02]' : 'border-dark-700 bg-dark-800 hover:border-dark-500'
               }`}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <Icon size={16} style={{ color: active ? m.color : '#6b7280' }} />
-                <span className="font-bold text-sm" style={{ color: active ? m.color : '#9ca3af' }}>{m.label}</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 mb-1 min-w-0">
+                <Icon size={16} className="shrink-0" style={{ color: active ? m.color : '#6b7280' }} />
+                <span className="font-bold text-xs sm:text-sm truncate" style={{ color: active ? m.color : '#9ca3af' }}>{m.label}</span>
               </div>
-              <p className="text-xs text-gray-500">{t(m.descKey)}</p>
+              <p className="text-xs text-gray-500 truncate">{t(m.descKey)}</p>
               {active && (
                 <div className="absolute top-2 right-2 w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: m.color }} />
               )}
@@ -564,9 +564,9 @@ export default function StudioPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Linkerkolom */}
-        <div className="col-span-2 space-y-5">
+        <div className="lg:col-span-2 space-y-5">
           {/* Titel */}
           <div className="card">
             <label className="block text-sm font-semibold text-gray-300 mb-2">{t('studio.label.title', 'Video Titel')}</label>

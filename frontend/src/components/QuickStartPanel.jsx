@@ -77,16 +77,16 @@ export default function QuickStartPanel({ voices, onStart, onPreview }) {
         <p className="text-xs text-gray-600 mt-1.5">{t('quickstart.topic.hint', 'Ctrl+Enter om direct te starten')}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="card">
           <label className="heading-display text-xs mb-2 block">{t('studio.label.duration', 'Duur')}</label>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {DURATIONS.map(d => (
               <button
                 key={d}
                 onClick={() => setDuration(d)}
                 disabled={busy}
-                className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all border-2"
+                className="flex-1 min-w-[56px] py-2 rounded-lg text-sm font-semibold transition-all border-2"
                 style={duration === d
                   ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
                   : { backgroundColor: 'transparent', borderColor: '#374151', color: '#9ca3af' }}
@@ -99,13 +99,14 @@ export default function QuickStartPanel({ voices, onStart, onPreview }) {
 
         <div className="card">
           <label className="heading-display text-xs mb-2 block">{t('quickstart.mode.label', 'Modus')}</label>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {MODES.map(m => (
               <button
                 key={m.value}
                 onClick={() => setMode(m.value)}
                 disabled={busy}
-                className="py-1.5 rounded-lg text-xs font-semibold transition-all border-2"
+                className="py-1.5 px-1 rounded-lg text-xs font-semibold transition-all border-2 truncate min-w-0"
+                title={m.label}
                 style={mode === m.value
                   ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
                   : { backgroundColor: 'transparent', borderColor: '#374151', color: '#9ca3af' }}
