@@ -97,7 +97,9 @@ export default function Layout() {
           </div>
 
           <a
-            href="http://localhost:3001"
+            href={['localhost', '127.0.0.1'].includes(window.location.hostname)
+              ? 'http://localhost:3001'
+              : 'https://vaultboost-production.up.railway.app'}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors"
