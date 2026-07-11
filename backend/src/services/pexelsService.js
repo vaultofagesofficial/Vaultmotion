@@ -127,6 +127,18 @@ const SKIP_TEMPLATES = new Set(['fact_animation', 'stats_counter', 'data_compari
 
 async function fetchBackgroundsForScenes(scenes, jobId) {
   const results = [...scenes];
+  const pixabay = require('./pixabayService');
+  const pixabayAvailable = !!process.env.PIXABAY_API_KEY;
+
+  // Zoek via één bron; gooit door bij geen resultaat
+  async function searchVia(source, query) {
+    if (source === 'pixabay') {
+      const r = await pixabay.searchVideo(query);
+      return { ...r, source: 'pixabay' };
+    }
+    const r = await searchVideo(query);
+    return { ...r, source: 'pexels' };
+  }
 
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
@@ -134,13 +146,37 @@ async function fetchBackgroundsForScenes(scenes, jobId) {
       results[i] = { ...results[i], background_video_url: null };
       continue;
     }
-    try {
-      const query = buildSearchQuery(scene.template, scene.content || {}, scene.visual_focus);
-      console.log(`[Pexels] Scène ${i + 1}/${scenes.length}: zoeken naar "${query}"`);
+    const query = buildSearchQuery(scene.template, scene.content || {}, scene.visual_focus);
 
-      const { url, videoId } = await searchVideo(query);
-      const filename = `${jobId}_scene${i}_pexels${videoId}.mp4`;
-      const localPath = await downloadVideo(url, filename);
+    // Rotatie: kies per scène willekeurig 50/50 tussen Pexels en Pixabay;
+    // bij geen resultaat probeert de andere bron het voordat we opgeven.
+    const primary   = pixabayAvailable && Math.random() < 0.5 ? 'pixabay' : 'pexels';
+    const secondary = primary === 'pixabay' ? 'pexels' : (pixabayAvailable ? 'pixabay' : null);
+
+    let found = null;
+    try {
+      console.log(`[Stock] Scène ${i + 1}/${scenes.length}: zoeken via ${primary} naar "${query}"`);
+      found = await searchVia(primary, query);
+    } catch (err) {
+      console.warn(`[Stock] ${primary} mislukt voor scène ${i + 1}: ${err.message}`);
+      if (secondary) {
+        try {
+          console.log(`[Stock] Scène ${i + 1}: fallback naar ${secondary}`);
+          found = await searchVia(secondary, query);
+        } catch (err2) {
+          console.warn(`[Stock] ${secondary} mislukt ook: ${err2.message}`);
+        }
+      }
+    }
+
+    if (!found) {
+      results[i] = { ...results[i], background_video_path: null, background_video_url: null };
+      continue;
+    }
+
+    try {
+      const filename = `${jobId}_scene${i}_${found.source}${found.videoId}.mp4`;
+      const localPath = await downloadVideo(found.url, filename);
 
       // Geef zowel het lokale pad als een HTTP URL terug
       // Gebruik absolute URL zodat Remotion de video kan laden tijdens rendering
@@ -148,17 +184,13 @@ async function fetchBackgroundsForScenes(scenes, jobId) {
         ...results[i],
         background_video_path: localPath,
         background_video_url: `${SERVER_BASE_URL}/outputs/backgrounds/${filename}`,
-        pexels_query: query,
-        pexels_video_id: videoId,
+        stock_source: found.source,
+        stock_query: query,
+        stock_video_id: found.videoId,
       };
-
     } catch (err) {
-      console.warn(`[Pexels] Scène ${i + 1} mislukt: ${err.message} — geen achtergrond`);
-      results[i] = {
-        ...results[i],
-        background_video_path: null,
-        background_video_url: null,
-      };
+      console.warn(`[Stock] Download scène ${i + 1} mislukt: ${err.message} — geen achtergrond`);
+      results[i] = { ...results[i], background_video_path: null, background_video_url: null };
     }
   }
 
