@@ -519,16 +519,14 @@ async function runAfterEditing(jobId, job) {
         const { getCreditBalance, CREDIT_COSTS } = require('./kieService');
         const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
         const vidScenes = scenes.filter(s => !SKIP.has(s.template));
-        const titleScenes = vidScenes.filter(s => s.template === 'cinematic_title').length;
-        const otherScenes = vidScenes.length - titleScenes;
-        // sheet 3×T2I + per scène 1×T2I startframe + I2V (title=Kling 70, rest=Seedance 30)
+        // sheet 3×T2I + per scène 1×T2I startframe + Kling 2.6 i2v (70cr) voor
+        // ELKE scène — zelfde videomodel als 'simple', plus de premium-extra's,
+        // zodat Regisseur logisch duurder is dan Simpel.
         // DIRECTOR_TEST_CHEAP=1: alles Seedance 480p (15cr) — enkel voor tests
         const cheap = process.env.DIRECTOR_TEST_CHEAP === '1';
         const estCredits = 3 * CREDIT_COSTS.t2i_grok
           + vidScenes.length * CREDIT_COSTS.t2i_grok
-          + (cheap
-            ? vidScenes.length * CREDIT_COSTS.t2v_seedance480
-            : titleScenes * CREDIT_COSTS.i2v_kling + otherScenes * CREDIT_COSTS.t2v_seedance720);
+          + vidScenes.length * (cheap ? CREDIT_COSTS.t2v_seedance480 : CREDIT_COSTS.i2v_kling);
         const balance = await getCreditBalance();
         if (balance !== null && balance < estCredits) {
           updateJob(jobId, { status: 'failed', error: `Regisseur-modus vereist ~${estCredits} credits maar saldo is ${balance}. Vul kie.ai-credits aan of kies een goedkopere stijl.`, kie_balance: balance, estimated_credits: estCredits });
@@ -538,7 +536,7 @@ async function runAfterEditing(jobId, job) {
           estimated_credits: estCredits,
           credit_breakdown: cheap
             ? `Regisseur (TESTMODUS 480p): character sheet (~15cr) + ${vidScenes.length} startframes (~${vidScenes.length * 5}cr) + ${vidScenes.length}× Seedance 480p i2v (~${vidScenes.length * 15}cr)`
-            : `Regisseur: character sheet (3 hoeken, ~15cr) + ${vidScenes.length} startframes (~${vidScenes.length * 5}cr) + ${titleScenes}× Kling i2v (~${titleScenes * 70}cr) + ${otherScenes}× Seedance i2v (~${otherScenes * 30}cr)`,
+            : `Regisseur: character sheet (3 hoeken, ~15cr) + ${vidScenes.length} startframes (~${vidScenes.length * 5}cr) + ${vidScenes.length}× Kling 2.6 i2v (~${vidScenes.length * 70}cr)`,
           ...(balance !== null ? { kie_balance: balance } : {}),
         });
       }

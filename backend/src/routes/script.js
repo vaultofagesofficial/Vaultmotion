@@ -134,4 +134,26 @@ router.post('/analyze-settings', async (req, res) => {
   }
 });
 
+// ── Studio-handoff: VaultBoost stuurt een script door; Studio vult het in ────
+// Kort-levende in-memory opslag (1 uur TTL) — bewust geen render-start:
+// de gebruiker kiest zelf stijl/duur/stem in Studio en klikt zelf op Render.
+const handoffs = new Map();
+const HANDOFF_TTL_MS = 60 * 60 * 1000;
+
+router.post('/handoff', (req, res) => {
+  const { script, topic, title } = req.body || {};
+  if (!script?.trim() && !topic?.trim()) return res.status(400).json({ error: 'script of topic is vereist' });
+  const id = require('crypto').randomUUID();
+  handoffs.set(id, { script: script || '', topic: topic || '', title: title || topic || '', created: Date.now() });
+  // opruimen van verlopen handoffs
+  for (const [k, v] of handoffs) if (Date.now() - v.created > HANDOFF_TTL_MS) handoffs.delete(k);
+  res.json({ id });
+});
+
+router.get('/handoff/:id', (req, res) => {
+  const h = handoffs.get(req.params.id);
+  if (!h || Date.now() - h.created > HANDOFF_TTL_MS) return res.status(404).json({ error: 'Handoff niet gevonden of verlopen' });
+  res.json(h);
+});
+
 module.exports = router;

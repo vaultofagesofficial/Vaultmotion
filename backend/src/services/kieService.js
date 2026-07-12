@@ -540,8 +540,11 @@ async function generateKlingVideosForScenes(scenes, jobId, outputsDir, onSceneUp
       const noText  = 'no text, no words, no letters, no inscriptions';
       // Startframe: zelfde personage, scène-specifieke regie (emotie/gebaar/blik uit visual_focus)
       const framePrompt = `${styleAnchor}, the same exact character as established, ${scene.visual_focus || scene.script_segment || ''}, ${scene.lighting_mood || 'cinematic lighting'}, photorealistic film still, 9:16 vertical, ${noText}`;
-      const isTitle = scene.template === 'cinematic_title';
-      const useKlingHere = isTitle && !cheap;
+      // Premium: Kling 2.6 i2v voor ÁLLE scènes (zelfde model als 'simple',
+      // plús character sheet + regie-startframes — Regisseur is strikt meer
+      // werk en dus duurder dan Simpel, nooit goedkoper).
+      // DIRECTOR_TEST_CHEAP=1: Seedance 480p voor goedkope integratietests.
+      const useKlingHere = !cheap;
       const model = useKlingHere ? 'kling-2.6/text-to-video' : 'bytedance/seedance-1.5-pro';
       const resolution = cheap ? '480p' : '720p';
 

@@ -127,7 +127,7 @@ const COST_MATRIX = {
   'simple':            { credits: '~600',  time: '~12-20 min', stars: 4, advice: 'Consistente AI-look per scène' },
   'illustrated':       { credits: '~40',  time: '~5-8 min',   stars: 3, advice: 'Geïllustreerde explainer-stijl — bijna gratis' },
   'stock':             { credits: '0',    time: '~3-6 min',   stars: 3, advice: '€0 · echte stockvideo\'s van Pexels' },
-  'director':          { credits: '~200-400', time: '~15-30 min', stars: 5, advice: '⚠️ Regisseur-modus kost aanzienlijk meer credits voor maximale filmkwaliteit. Aanbevolen voor je belangrijkste video\'s, niet voor dagelijkse content.' },
+  'director':          { credits: '~700-950', time: '~15-30 min', stars: 5, advice: '⚠️ Regisseur-modus kost aanzienlijk meer credits (character sheet + regie-startframe + Kling per scène) voor maximale filmkwaliteit. Aanbevolen voor je belangrijkste video\'s, niet voor dagelijkse content.' },
   'hybrid:smart':      { credits: 'variabel', time: '~6-16 min', stars: 4, advice: 'Claude kiest per scène — alleen AI waar het écht impact heeft' },
   'hybrid:low':        { credits: '~150',  time: '~6-10 min',  stars: 3, advice: 'Beste prijs/kwaliteit voor dagelijkse posts' },
   'hybrid:medium':     { credits: '~400',  time: '~10-16 min', stars: 4, advice: 'Voor belangrijke video\'s' },
@@ -214,6 +214,25 @@ export default function StudioPage() {
   const [error,          setError]          = useState('');
   const [format,         setFormat]         = useState('narrative');
   const [recommendation, setRecommendation] = useState(null);
+
+  // Studio-handoff vanuit VaultBoost: ?handoff=<id> → script/topic/titel prefillen.
+  // Bewust GEEN render-start: de gebruiker kiest zelf stijl/duur/stem.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const handoffId = params.get('handoff');
+    if (!handoffId) return;
+    axios.get(`/api/script/handoff/${handoffId}`)
+      .then(({ data }) => {
+        if (data.script) setScript(data.script);
+        if (data.topic)  setTopic(data.topic);
+        if (data.title)  setTitle(data.title);
+        localStorage.setItem('studioMode', 'full');
+        setStudioTab('full'); // volledig-tab zodat het scriptveld zichtbaar is
+        // parameter uit de URL halen zodat verversen geen tweede fetch doet
+        window.history.replaceState({}, '', '/studio');
+      })
+      .catch(() => setError('Script-overdracht vanuit VaultBoost niet gevonden of verlopen'));
+  }, []);
 
   const detectedFormat = (() => {
     const t = topic.trim();
@@ -351,7 +370,7 @@ export default function StudioPage() {
     if (renderStyle === 'director' && !preview) {
       const ok = window.confirm(
         '🎬 Regisseur-modus kost aanzienlijk meer credits voor maximale filmkwaliteit ' +
-        '(character sheet + regie-startframe per scène, geschat ~200-400 credits voor een 30-60s video). ' +
+        '(character sheet + regie-startframe per scène, geschat ~700-950 credits voor een 30-60s video). ' +
         'Aanbevolen voor je belangrijkste video\'s, niet voor dagelijkse content.\n\nDoorgaan?'
       );
       if (!ok) return;

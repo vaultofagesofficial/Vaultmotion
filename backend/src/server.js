@@ -26,6 +26,9 @@ const API_KEY = process.env.VAULTMOTION_API_KEY;
 if (API_KEY) {
   app.use('/api', (req, res, next) => {
     if (req.path === '/health' || req.path === '/capabilities') return next();
+    // Studio-handoff GET: browser haalt het script op via een random UUID met
+    // 1u-TTL (bevat enkel door de gebruiker zelf aangeleverd script) — geen key nodig
+    if (req.method === 'GET' && /^\/script\/handoff\/[0-9a-f-]+$/.test(req.path)) return next();
     if (req.headers['x-api-key'] === API_KEY) return next();
     res.status(401).json({ error: 'Ongeldige of ontbrekende API key' });
   });
