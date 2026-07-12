@@ -112,6 +112,7 @@ const RENDER_STYLE_OPTIONS = [
   { value: 'hybrid',            labelKey: 'studio.render_style.hybrid',   descKey: 'studio.render_style.hybrid_desc',   labelFb: '⚡ Hybride',      descFb: 'Mix KIE + 2D op basis van kwaliteitsschuif' },
   { value: 'illustrated',       labelKey: 'studio.render_style.illustrated', descKey: 'studio.render_style.illustrated_desc', labelFb: '🎨 Geïllustreerd', descFb: 'Stilstaande illustraties + Ken Burns — bijna gratis' },
   { value: 'stock',             labelKey: 'studio.render_style.stock',       descKey: 'studio.render_style.stock_desc',       labelFb: '📹 Stock Footage',  descFb: 'Gratis Pexels-stockvideo\'s per scène — €0' },
+  { value: 'director',          labelKey: 'studio.render_style.director', descKey: 'studio.render_style.director_desc', labelFb: '🎬 Regisseur',    descFb: 'Premium: character sheet + regie per scène — maximale filmkwaliteit' },
   { value: 'cinematic_noir',    labelKey: 'studio.render_style.noir',     descKey: 'studio.render_style.noir_desc',     labelFb: '🎞️ Noir',        descFb: 'Zwart-wit hoog contrast, zware grain, intense shake' },
   { value: 'documentary',       labelKey: 'studio.render_style.docu',     descKey: 'studio.render_style.docu_desc',     labelFb: '📽️ Documentary', descFb: 'Rustige cuts, neutrale kleuren, tekstoverlays' },
   { value: 'social_media_fast', labelKey: 'studio.render_style.social',   descKey: 'studio.render_style.social_desc',   labelFb: '📱 Social Fast',  descFb: 'Max 2s per scène, grote tekst, neon (TikTok-stijl)' },
@@ -126,6 +127,7 @@ const COST_MATRIX = {
   'simple':            { credits: '~600',  time: '~12-20 min', stars: 4, advice: 'Consistente AI-look per scène' },
   'illustrated':       { credits: '~40',  time: '~5-8 min',   stars: 3, advice: 'Geïllustreerde explainer-stijl — bijna gratis' },
   'stock':             { credits: '0',    time: '~3-6 min',   stars: 3, advice: '€0 · echte stockvideo\'s van Pexels' },
+  'director':          { credits: '~200-400', time: '~15-30 min', stars: 5, advice: '⚠️ Regisseur-modus kost aanzienlijk meer credits voor maximale filmkwaliteit. Aanbevolen voor je belangrijkste video\'s, niet voor dagelijkse content.' },
   'hybrid:smart':      { credits: 'variabel', time: '~6-16 min', stars: 4, advice: 'Claude kiest per scène — alleen AI waar het écht impact heeft' },
   'hybrid:low':        { credits: '~150',  time: '~6-10 min',  stars: 3, advice: 'Beste prijs/kwaliteit voor dagelijkse posts' },
   'hybrid:medium':     { credits: '~400',  time: '~10-16 min', stars: 4, advice: 'Voor belangrijke video\'s' },
@@ -345,6 +347,15 @@ export default function StudioPage() {
 
   async function handleStartRender(preview = false) {
     if (!script.trim()) return;
+    // Regisseur-modus: expliciete bevestiging — bewuste premium-keuze
+    if (renderStyle === 'director' && !preview) {
+      const ok = window.confirm(
+        '🎬 Regisseur-modus kost aanzienlijk meer credits voor maximale filmkwaliteit ' +
+        '(character sheet + regie-startframe per scène, geschat ~200-400 credits voor een 30-60s video). ' +
+        'Aanbevolen voor je belangrijkste video\'s, niet voor dagelijkse content.\n\nDoorgaan?'
+      );
+      if (!ok) return;
+    }
     setLoading(true);
     setError('');
     try {

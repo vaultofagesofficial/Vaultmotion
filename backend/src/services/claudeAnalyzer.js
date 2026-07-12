@@ -164,6 +164,11 @@ HARD CONSTRAINTS:
    Fact types: "count", "measurement", "duration", "date", "ratio". Fields: type, value, unit (null if none), subject.
 6. data_comparison: fill the "comparison" field with { "type": "ranking"|"scale"|"before_after"|"timeline", "unit": string, "title": string, "entries": [{"label": string, "value": number, "color": null}] }. Min 2 entries, max 4, same unit.
 7. For EVERY scene, add "visual_focus": extract the MOST CONCRETE, SPECIFIC, VISUALLY FILMABLE moment from the script_segment. If the script mentions a specific object, food, action, or emotion, that EXACT element MUST appear literally in visual_focus. Do NOT abstract or generalize — if the script says "tears rolled down his face eating Cheetos", write "a person's face with visible tears, orange Cheetos dust on fingers, one Cheeto raised to mouth", NOT "an emotional man with a snack". Include a PERSON interacting with that exact element (action + object). Max 25 words. Never just the object alone.
+${renderStyle === 'director' ? `7b. DIRECTOR MODE — direct this scene like a film director would: describe not just WHAT is shown but HOW it is performed. Every visual_focus with a human figure MUST additionally include, woven into the same sentence (max 35 words total in director mode):
+   - the character's emotion/facial expression ("pained expression", "eyes widening in realization", "jaw clenched in frustration")
+   - body language/posture ("leaning forward intently", "hand trembling as it reaches", "shoulders sagging in defeat")
+   - gaze direction/eye contact ("staring directly at the object", "glancing over shoulder nervously", "eyes locked on the horizon")
+   Every human figure in the scene must show a specific, MOTIVATED emotional state that follows from the script_segment — never a neutral face.` : ''}
 8. For EVERY scene, add:
    - "lighting_mood": specific lighting atmosphere matching this genre and scene energy. NOT generic "dramatic rim lighting" for non-epic content.
    - "camera_style": camera movement, max 12 words, matching the energy (gaming→fast handheld; beauty→slow macro; finance→clean static).

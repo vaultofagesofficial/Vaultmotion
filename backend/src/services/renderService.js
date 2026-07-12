@@ -513,6 +513,36 @@ async function runAfterEditing(jobId, job) {
     }
 
     if (useKling) {
+      // Regisseur-modus: kostenraming vooraf (duurder dan ai-cinematic door
+      // character sheet + per-scène startframes) + Credit Shield
+      if (resolvedRenderStyle === 'director') {
+        const { getCreditBalance, CREDIT_COSTS } = require('./kieService');
+        const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
+        const vidScenes = scenes.filter(s => !SKIP.has(s.template));
+        const titleScenes = vidScenes.filter(s => s.template === 'cinematic_title').length;
+        const otherScenes = vidScenes.length - titleScenes;
+        // sheet 3×T2I + per scène 1×T2I startframe + I2V (title=Kling 70, rest=Seedance 30)
+        // DIRECTOR_TEST_CHEAP=1: alles Seedance 480p (15cr) — enkel voor tests
+        const cheap = process.env.DIRECTOR_TEST_CHEAP === '1';
+        const estCredits = 3 * CREDIT_COSTS.t2i_grok
+          + vidScenes.length * CREDIT_COSTS.t2i_grok
+          + (cheap
+            ? vidScenes.length * CREDIT_COSTS.t2v_seedance480
+            : titleScenes * CREDIT_COSTS.i2v_kling + otherScenes * CREDIT_COSTS.t2v_seedance720);
+        const balance = await getCreditBalance();
+        if (balance !== null && balance < estCredits) {
+          updateJob(jobId, { status: 'failed', error: `Regisseur-modus vereist ~${estCredits} credits maar saldo is ${balance}. Vul kie.ai-credits aan of kies een goedkopere stijl.`, kie_balance: balance, estimated_credits: estCredits });
+          return;
+        }
+        updateJob(jobId, {
+          estimated_credits: estCredits,
+          credit_breakdown: cheap
+            ? `Regisseur (TESTMODUS 480p): character sheet (~15cr) + ${vidScenes.length} startframes (~${vidScenes.length * 5}cr) + ${vidScenes.length}× Seedance 480p i2v (~${vidScenes.length * 15}cr)`
+            : `Regisseur: character sheet (3 hoeken, ~15cr) + ${vidScenes.length} startframes (~${vidScenes.length * 5}cr) + ${titleScenes}× Kling i2v (~${titleScenes * 70}cr) + ${otherScenes}× Seedance i2v (~${otherScenes * 30}cr)`,
+          ...(balance !== null ? { kie_balance: balance } : {}),
+        });
+      }
+
       // Credit Shield + kostenraming voor illustrated (enkel T2I ≈ 5cr/scène)
       const isIllustrated = resolvedRenderStyle === 'illustrated';
       let illustratedShielded = false;
@@ -573,6 +603,13 @@ async function runAfterEditing(jobId, job) {
         if (kieResult.anchorImageUrl) {
           updateJob(jobId, { anchor_image_url: kieResult.anchorImageUrl });
           console.log(`[Pipeline ${jobId}] anchor_image_url opgeslagen: ${kieResult.anchorImageUrl}`);
+        }
+        if (kieResult.characterSheet) {
+          updateJob(jobId, {
+            character_sheet: Object.fromEntries(Object.entries(kieResult.characterSheet).map(([k, v]) => [k, v.localUrl || v.cdnUrl])),
+            multi_ref_supported: kieResult.multiRefSupported ?? null,
+          });
+          console.log(`[Pipeline ${jobId}] character sheet opgeslagen (${Object.keys(kieResult.characterSheet).join(', ')})`);
         }
         const failedCount = finalScenes.filter(s => s.kling_status === 'failed').length;
         if (failedCount === finalScenes.length) {

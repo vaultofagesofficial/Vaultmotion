@@ -179,6 +179,74 @@ async function generateAnchorImage(styleAnchor, jobId, outputsDir) {
   }
 }
 
+// ── Character sheet: 3 hoeken van hetzelfde personage (Regisseur-modus) ──────
+// Professionele film/animatie-pipelines gebruiken een multi-hoek character
+// sheet i.p.v. één los ankerbeeld. grok-imagine via kie.ai heeft geen seed-
+// parameter; consistentie komt van de identieke, zeer gedetailleerde
+// styleAnchor (uniquenessService genereert al hyper-specifieke personages:
+// littekens, kledingdetails, props) + expliciete "same exact character"-
+// framing per hoek. Kosten: 3 × t2i_grok = ~15 credits per video.
+const CHARACTER_SHEET_ANGLES = [
+  { key: 'front',   prompt: 'front-facing portrait, looking directly at camera, head and shoulders centered' },
+  { key: 'quarter', prompt: 'three-quarter angle view, body turned 45 degrees, face clearly visible' },
+  { key: 'profile', prompt: 'full side profile view, facing left, silhouette edge clearly defined' },
+];
+
+async function generateCharacterSheet(styleAnchor, topic, jobId, outputsDir) {
+  const bgDir = path.join(outputsDir, 'backgrounds');
+  if (!fs.existsSync(bgDir)) fs.mkdirSync(bgDir, { recursive: true });
+
+  const base = `${styleAnchor}, character reference sheet of the same exact character, identical face, identical clothing, identical props, neutral dark studio background, photorealistic, cinematic lighting, subject: ${topic}`;
+
+  const results = await Promise.allSettled(CHARACTER_SHEET_ANGLES.map(async angle => {
+    const cdnUrl = await generateImageForScene(`${base}, ${angle.prompt}`, 'grok-imagine/text-to-image');
+    // lokaal bewaren voor UI/debug
+    const outFile = path.join(bgDir, `${jobId}_charsheet_${angle.key}.jpg`);
+    try {
+      await downloadVideo(cdnUrl, outFile);
+      await sharp(outFile).resize(1080, 1920, { fit: 'cover', position: 'center' }).jpeg({ quality: 92 }).toFile(outFile + '.tmp.jpg');
+      fs.renameSync(outFile + '.tmp.jpg', outFile);
+    } catch (e) { console.warn(`[CharSheet] lokaal opslaan ${angle.key} mislukt: ${e.message}`); }
+    return { key: angle.key, cdnUrl, localUrl: `${SERVER_BASE_URL}/outputs/backgrounds/${path.basename(outFile)}` };
+  }));
+
+  const sheet = {};
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') sheet[CHARACTER_SHEET_ANGLES[i].key] = r.value;
+    else console.warn(`[CharSheet] hoek ${CHARACTER_SHEET_ANGLES[i].key} mislukt: ${r.reason?.message}`);
+  });
+
+  if (!sheet.front) throw new Error('Character sheet: front-hoek mislukt — geen bruikbare referentie');
+
+  // Composiet (3 hoeken naast elkaar) lokaal via sharp — gratis, voor UI en
+  // als mogelijke sterkere single-reference (multi-ref-uitkomst bepaalt gebruik)
+  try {
+    const angleFiles = CHARACTER_SHEET_ANGLES
+      .map(a => path.join(bgDir, `${jobId}_charsheet_${a.key}.jpg`))
+      .filter(f => fs.existsSync(f));
+    if (angleFiles.length >= 2) {
+      const thumbs = await Promise.all(angleFiles.map(f => sharp(f).resize(360, 640, { fit: 'cover' }).toBuffer()));
+      const compositeFile = path.join(bgDir, `${jobId}_charsheet_composite.jpg`);
+      await sharp({ create: { width: 360 * thumbs.length, height: 640, channels: 3, background: '#111111' } })
+        .composite(thumbs.map((buf, i) => ({ input: buf, left: i * 360, top: 0 })))
+        .jpeg({ quality: 92 })
+        .toFile(compositeFile);
+      sheet.composite = { localUrl: `${SERVER_BASE_URL}/outputs/backgrounds/${path.basename(compositeFile)}` };
+      console.log(`[CharSheet] Composiet opgeslagen: ${compositeFile} (${Math.round(fs.statSync(compositeFile).size / 1024)}KB)`);
+    }
+  } catch (e) { console.warn(`[CharSheet] composiet mislukt (niet-blokkerend): ${e.message}`); }
+
+  console.log(`[CharSheet] Klaar: ${Object.keys(sheet).join(', ')}`);
+  return sheet; // { front: {cdnUrl, localUrl}, quarter?, profile?, composite? }
+}
+
+// Multi-image-reference probe: proberen 2+ image_urls mee te geven aan
+// kling-2.6/image-to-video. Bij afwijzing valideert kie.ai vóór creditverbruik
+// (createTask-fout kost niets). Resultaat wordt per proces gecachet.
+let multiRefSupport = null; // null = onbekend, true/false na eerste echte poging
+function getMultiRefSupport() { return multiRefSupport; }
+function setMultiRefSupport(v) { multiRefSupport = v; }
+
 async function generateAnchorImagePexels(styleAnchor) {
   const pexelsKey = process.env.PEXELS_API_KEY;
   if (!pexelsKey) throw new Error('PEXELS_API_KEY niet ingesteld — Pexels-fallback niet mogelijk');
@@ -262,11 +330,15 @@ async function createVideoTask(prompt, model, resolution = '720p', startImageUrl
     : { prompt: prompt.slice(0, 1000), aspect_ratio: '9:16', duration: '5', sound: false, mode: 'std' };
 
   // image-to-video parameters toevoegen
+  // startImageUrl mag een string zijn of een array (multi-reference probe voor
+  // Regisseur-modus). Kling accepteert image_urls als array; of >1 element
+  // daadwerkelijk als extra referentie gebruikt wordt is de multiRefSupport-probe.
   if (startImageUrl) {
+    const urls = Array.isArray(startImageUrl) ? startImageUrl : [startImageUrl];
     if (effectiveModel === 'kling-2.6/image-to-video') {
-      input.image_urls = [startImageUrl]; // array vereist — string geeft "This field is required"
+      input.image_urls = urls; // array vereist — string geeft "This field is required"
     } else if (isSeedance) {
-      input.start_image_url = startImageUrl;
+      input.start_image_url = urls[0]; // Seedance ondersteunt enkel single start frame
     }
   }
 
@@ -445,6 +517,97 @@ async function generateKlingVideosForScenes(scenes, jobId, outputsDir, onSceneUp
   if (!fs.existsSync(bgDir)) fs.mkdirSync(bgDir, { recursive: true });
 
   const updatedScenes = scenes.map(s => ({ ...s }));
+
+  // ── REGISSEUR-MODUS ────────────────────────────────────────────────────────
+  // Character sheet (3 hoeken) + per scène een eigen T2I-startframe met het
+  // vaste personage, daarna image-to-video. cinematic_title gebruikt Kling 2.6
+  // met multi-reference-probe [scèneframe, front-referentie]; overige scènes
+  // Seedance 1.5 Pro i2v (30cr/scène 720p — betaalbaarder dan Kling's 70cr).
+  if (renderStyle === 'director') {
+    const cheap = process.env.DIRECTOR_TEST_CHEAP === '1'; // testmodus: alles Seedance 480p
+    console.log(`[Director] Regisseur-modus start (cheap=${cheap}) — character sheet genereren...`);
+
+    let sheet = null;
+    try {
+      sheet = await generateCharacterSheet(styleAnchor, scenes[0]?.content?.title || '', jobId, outputsDir);
+    } catch (err) {
+      console.warn(`[Director] Character sheet mislukt (${err.message}) — fallback naar los ankerbeeld`);
+    }
+    const frontRef = sheet?.front?.cdnUrl || null;
+
+    async function directorScene(scene, idx) {
+      const outFile = path.join(bgDir, `${jobId}_scene${idx}.mp4`);
+      const noText  = 'no text, no words, no letters, no inscriptions';
+      // Startframe: zelfde personage, scène-specifieke regie (emotie/gebaar/blik uit visual_focus)
+      const framePrompt = `${styleAnchor}, the same exact character as established, ${scene.visual_focus || scene.script_segment || ''}, ${scene.lighting_mood || 'cinematic lighting'}, photorealistic film still, 9:16 vertical, ${noText}`;
+      const isTitle = scene.template === 'cinematic_title';
+      const useKlingHere = isTitle && !cheap;
+      const model = useKlingHere ? 'kling-2.6/text-to-video' : 'bytedance/seedance-1.5-pro';
+      const resolution = cheap ? '480p' : '720p';
+
+      onSceneUpdate(idx, { kling_status: 'generating', kling_prompt: framePrompt.slice(0, 300), kling_model: model, kling_progress: 5, director_mode: true });
+      try {
+        console.log(`[Director] Scène ${idx}: startframe via grok-imagine...`);
+        const sceneFrameUrl = await generateImageForScene(framePrompt.slice(0, 2000), 'grok-imagine/text-to-image');
+
+        // Multi-reference probe: enkel op Kling, enkel als front-referentie bestaat
+        let imageInput = sceneFrameUrl;
+        if (useKlingHere && frontRef && multiRefSupport !== false) {
+          imageInput = [sceneFrameUrl, frontRef];
+        }
+
+        const videoPrompt = `${scene.visual_focus || ''}, ${scene.camera_style || 'slow cinematic camera movement'}, ${noText}`;
+        let taskId;
+        try {
+          taskId = await createVideoTask(videoPrompt.slice(0, 1000), model, resolution, imageInput);
+          if (Array.isArray(imageInput) && imageInput.length > 1) {
+            multiRefSupport = true;
+            console.log('[Director] ✅ Multi-image-reference GEACCEPTEERD door kling-2.6/image-to-video');
+          }
+        } catch (err) {
+          if (Array.isArray(imageInput) && imageInput.length > 1) {
+            multiRefSupport = false;
+            console.warn(`[Director] Multi-ref AFGEWEZEN (${err.message.slice(0, 150)}) — retry met enkel scèneframe`);
+            taskId = await createVideoTask(videoPrompt.slice(0, 1000), model, resolution, sceneFrameUrl);
+          } else throw err;
+        }
+
+        onSceneUpdate(idx, { kling_status: 'polling', kling_progress: 15, kling_task_id: taskId });
+        let videoUrl = null;
+        for (let i = 0; i < MAX_POLLS; i++) {
+          await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+          let result;
+          try { result = await checkVideoStatus(taskId); } catch (e) { continue; }
+          onSceneUpdate(idx, { kling_progress: Math.min(15 + Math.round(result.progress ?? (i / MAX_POLLS * 70)), 85) });
+          if (result.status === 'success') { videoUrl = result.videoUrl; break; }
+          if (result.status === 'fail') throw new Error(`KIE taak mislukt: ${result.failMsg || 'onbekend'}`);
+        }
+        if (!videoUrl) throw new Error('KIE timeout');
+
+        await downloadVideo(videoUrl, outFile);
+        const localUrl = `${SERVER_BASE_URL}/outputs/backgrounds/${path.basename(outFile)}`;
+        updatedScenes[idx] = { ...updatedScenes[idx], background_video_url: localUrl, kling_status: 'completed', kling_progress: 100, kling_model: model, director_frame_url: sceneFrameUrl };
+        onSceneUpdate(idx, { kling_status: 'completed', kling_progress: 100, background_video_url: localUrl });
+        console.log(`[Director] Scène ${idx} ✅ (${model} ${resolution})`);
+      } catch (err) {
+        console.warn(`[Director] Scène ${idx} mislukt: ${err.message}`);
+        updatedScenes[idx] = { ...updatedScenes[idx], kling_status: 'failed', kling_error: err.message, background_video_url: null };
+        onSceneUpdate(idx, { kling_status: 'failed', kling_error: err.message, background_video_url: null });
+      }
+    }
+
+    // Code-only templates overslaan; fact/stats krijgen zoals bij ai-cinematic een stilstaand beeld
+    await Promise.allSettled(scenes.map((scene, idx) => {
+      if (SKIP_KIE_TEMPLATES.has(scene.template)) {
+        updatedScenes[idx] = { ...updatedScenes[idx], kling_status: 'skipped', background_video_url: null };
+        onSceneUpdate(idx, { kling_status: 'skipped' });
+        return null;
+      }
+      return directorScene(scene, idx);
+    }).filter(Boolean));
+
+    return { scenes: updatedScenes, anchorImageUrl: frontRef, characterSheet: sheet, multiRefSupported: multiRefSupport };
+  }
 
   // ── Render helper (één scène) ──────────────────────────────────────────────
   async function renderScene(scene, idx, startImageUrl = null) {
@@ -641,4 +804,4 @@ async function generateSimpleScene(visualFocus, styleAnchor, jobId, outputsDir, 
   throw new Error(`SimpleScene I2V timeout (scène ${sceneIdx})`);
 }
 
-module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus, getCreditBalance, CREDIT_COSTS, ILLUSTRATION_STYLES };
+module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateCharacterSheet, getMultiRefSupport, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus, getCreditBalance, CREDIT_COSTS, ILLUSTRATION_STYLES };

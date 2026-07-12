@@ -90,6 +90,23 @@ function StockPreview() {
   );
 }
 
+function DirectorPreview() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(140deg, #1a0505, #2d0f0f, #0d0d0d)', overflow: 'hidden' }}>
+      {/* Character sheet: 3 silhouet-hoeken naast elkaar */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 10, paddingBottom: 14 }}>
+        {[0.75, 1, 0.75].map((s, i) => (
+          <div key={i} style={{ width: 15 * s, height: 30 * s, borderRadius: '45% 45% 8px 8px', background: i === 1 ? '#e53e3e' : 'rgba(229,62,62,0.45)', animation: `vmPulse ${2.5 + i * 0.4}s ease-in-out infinite` }} />
+        ))}
+      </div>
+      {/* Filmklapper-streep bovenaan */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 9, background: 'repeating-linear-gradient(-45deg, #d4af37 0 8px, #0d0d0d 8px 16px)', opacity: 0.85 }} />
+      <span style={{ position: 'absolute', top: 13, left: 8, fontSize: 9, color: '#d4af37', fontWeight: 700, letterSpacing: 1 }}>PREMIUM</span>
+      <span style={{ position: 'absolute', bottom: 4, right: 8, fontSize: 9, color: '#ea6e6e' }}>🎬 Regisseur</span>
+    </div>
+  );
+}
+
 function NoirPreview() {
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(120deg, #000, #262626, #000)', animation: 'vmFlicker 4s linear infinite', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -138,6 +155,7 @@ const PREVIEWS = {
   'hybrid':            HybridPreview,
   'illustrated':       IllustratedPreview,
   'stock':             StockPreview,
+  'director':          DirectorPreview,
   'cinematic_noir':    NoirPreview,
   'documentary':       DocumentaryPreview,
   'social_media_fast': SocialFastPreview,
