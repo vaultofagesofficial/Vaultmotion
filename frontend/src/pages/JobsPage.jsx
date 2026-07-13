@@ -30,6 +30,7 @@ export default function JobsPage() {
   const { t } = useTranslation();
   const [jobs, setJobs] = useState([]);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -49,10 +50,22 @@ export default function JobsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const filtered = jobs.filter(j =>
-    j.title?.toLowerCase().includes(search.toLowerCase()) ||
-    j.id?.includes(search)
-  );
+  const ACTIVE_STATUSES = ['analyzing', 'generating_backgrounds', 'storyboard_ready', 'rendering', 'queued', 'editing', 'generating_audio', 'waiting_for_backgrounds'];
+  const filtered = jobs.filter(j => {
+    const matchesSearch = j.title?.toLowerCase().includes(search.toLowerCase()) || j.id?.includes(search);
+    const matchesStatus =
+      statusFilter === 'all'       ? true :
+      statusFilter === 'active'    ? ACTIVE_STATUSES.includes(j.status) :
+      j.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const FILTERS = [
+    { value: 'all',       label: t('jobs.filter.all', 'Alle') },
+    { value: 'active',    label: t('jobs.filter.active', 'Actief') },
+    { value: 'completed', label: t('jobs.filter.completed', 'Voltooid') },
+    { value: 'failed',    label: t('jobs.filter.failed', 'Mislukt') },
+  ];
 
   return (
     <div className="p-8">
@@ -66,14 +79,30 @@ export default function JobsPage() {
         </Link>
       </div>
 
-      <div className="relative mb-6">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-        <input
-          className="input pl-9"
-          placeholder={t('jobs.search.placeholder', 'Zoek op titel of job ID...')}
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            className="input pl-9"
+            placeholder={t('jobs.search.placeholder', 'Zoek op titel of job ID...')}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {FILTERS.map(f => (
+            <button
+              key={f.value}
+              onClick={() => setStatusFilter(f.value)}
+              className="px-3 py-2 rounded-lg text-xs font-semibold transition-colors border"
+              style={statusFilter === f.value
+                ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
+                : { backgroundColor: 'transparent', borderColor: '#3a3a3a', color: '#9ca3af' }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
