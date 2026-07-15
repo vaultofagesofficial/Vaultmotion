@@ -220,9 +220,69 @@ async function continueFromEditing(jobId) {
   });
 }
 
+// ── Universele creditraming per stijl (conservatief: liever over- dan onderschatten) ──
+function estimateJobCredits(scenes, renderStyle, hybridIntensity) {
+  const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
+  const vid = scenes.filter(s => !SKIP.has(s.template) && !s.skip_kie);
+  switch (renderStyle) {
+    case 'stock':
+    case '2d':
+      return 0;
+    case 'ai-image':
+    case 'illustrated':
+      return vid.length * 5;                     // enkel T2I per scène
+    case 'simple':
+      return vid.length * 75;                    // T2I (5) + Kling I2V (70)
+    case 'director':
+      return 15 + vid.length * 75;               // character sheet + T2I + Kling per scène
+    case 'hybrid': {
+      const n = scenes.length;
+      const kieN = hybridIntensity === 'high'   ? n
+                 : hybridIntensity === 'medium' ? Math.min(n, Math.ceil(n / 2) + 2)
+                 : hybridIntensity === 'smart'  ? Math.min(n, scenes.filter(s => s.needs_ai && !s.skip_kie).length + 2)
+                 : 2;                            // low: enkel titel + outro
+      return kieN * 75;
+    }
+    default: {
+      // ai-cinematic + visuele presets (noir/documentary/social/luxury)
+      const titles = vid.filter(s => ['cinematic_title', 'outro_cta'].includes(s.template)).length;
+      return 5 + titles * 70 + Math.max(0, vid.length - titles) * 30; // anker + Kling-titels + Seedance-rest
+    }
+  }
+}
+
 async function runAfterEditing(jobId, job) {
   try {
     const scenes = getJob(jobId)?.scenes || job.scenes;
+
+    // ── UNIVERSELE CREDIT-CHECK — vóór TTS én kie.ai ─────────────────────────
+    // Bij onvoldoende saldo pauzeert de job op 'insufficient_credits'; de
+    // gebruiker kiest expliciet: credits bijvullen of gratis verder met Stock.
+    // Dit vervangt ALLE vroegere stille 2D-fallbacks: er valt niets meer
+    // onaangekondigd terug naar een goedkopere stijl.
+    {
+      const rStyle = getJob(jobId)?.render_style || job.render_style || 'ai-cinematic';
+      const isPreviewJob = !!(getJob(jobId)?.preview || job.preview);
+      if (!isPreviewJob && process.env.KIE_API_KEY) {
+        const needed = estimateJobCredits(scenes, rStyle, getJob(jobId)?.hybrid_intensity || job.hybrid_intensity);
+        if (needed > 0) {
+          const { getCreditBalance } = require('./kieService');
+          const balance = await getCreditBalance();
+          if (balance !== null && balance < needed) {
+            console.warn(`[CreditCheck ${jobId}] Onvoldoende saldo: nodig ~${needed}, beschikbaar ${balance} — keuze aan gebruiker`);
+            updateJob(jobId, {
+              status: 'insufficient_credits',
+              credit_choice: { needed, balance, chosen_style: rStyle },
+              estimated_credits: needed,
+              kie_balance: balance,
+              progress: 22,
+            });
+            return;
+          }
+          updateJob(jobId, { estimated_credits: needed, ...(balance !== null ? { kie_balance: balance } : {}) });
+        }
+      }
+    }
 
     // ── STAP 2: ElevenLabs voice-over ────────────────────────────────────────
     console.log(`[Pipeline ${jobId}] Stap 2: Voice-over...`);
@@ -335,27 +395,12 @@ async function runAfterEditing(jobId, job) {
       const styleAnchor  = currentJob?.style_anchor || job.style_anchor || '';
       finalScenes = [...scenes];
 
-      // Credit Shield: onder de drempel → alle scènes 2D i.p.v. falen halverwege
-      const shieldThreshold = parseInt(process.env.CREDIT_SHIELD_THRESHOLD || '100', 10);
-      const { getCreditBalance } = require('./kieService');
-      const balance = await getCreditBalance();
+      // Saldo is al gecontroleerd door de universele credit-check bovenin —
+      // hier alleen nog de kosten-breakdown vastleggen (geen stille fallback meer)
       const kieScenesCount = scenes.filter(s => !s.skip_kie).length;
-      if (balance !== null && balance < shieldThreshold) {
-        console.warn(`[CreditShield ${jobId}] Saldo ${balance} < drempel ${shieldThreshold} — ${kieScenesCount} scène(s) naar 2D-fallback`);
-        scenes.forEach(s => { s.skip_kie = true; });
-        updateJob(jobId, {
-          credit_shield_triggered: true,
-          credit_warning: `Weinig credits (saldo: ${balance}) — ${kieScenesCount} scène${kieScenesCount === 1 ? '' : 's'} worden in 2D-modus gerenderd`,
-          kie_balance: balance,
-          estimated_credits: 0,
-        });
-      } else {
-        updateJob(jobId, {
-          estimated_credits: kieScenesCount * 75,
-          credit_breakdown: `${kieScenesCount} scènes AI-beeld (~${kieScenesCount * 75} credits), ${scenes.length - kieScenesCount} scènes 2D (gratis)`,
-          ...(balance !== null ? { kie_balance: balance } : {}),
-        });
-      }
+      updateJob(jobId, {
+        credit_breakdown: `${kieScenesCount} scènes AI-beeld (~${kieScenesCount * 75} credits), ${scenes.length - kieScenesCount} scènes 2D (gratis)`,
+      });
 
       await runWithConcurrency(scenes, MAX_CONCURRENT_KIE, async (scene, idx) => {
         // Door gebruiker gemarkeerd als code-only (kostenbesparing)
@@ -374,6 +419,12 @@ async function runAfterEditing(jobId, job) {
             return {};
           })());
           const videoUrl = await generateSimpleScene(scene.visual_focus, styleAnchor, jobId, OUTPUTS_DIR, idx);
+          if (!videoUrl) {
+            // Credits raakten op TIJDENS de render (402) — geen stille fallback:
+            // scène valt terug op tekststijl mét zichtbare waarschuwing op de job
+            const cw = getJob(jobId)?.credit_warning;
+            if (!cw) updateJob(jobId, { credit_warning: 'kie.ai-credits raakten op tijdens de render — resterende scènes zijn in tekststijl gerenderd. Vul credits aan en gebruik "Opnieuw proberen" voor volledige AI-beelden.' });
+          }
           const updates = videoUrl
             ? { background_video_url: videoUrl, kling_status: 'success' }
             : { background_video_url: null, template: 'text_focus_2d', kling_status: 'skipped' };
@@ -455,27 +506,12 @@ async function runAfterEditing(jobId, job) {
         });
       }
 
-      // Credit Shield: check saldo vóór dure aanroepen; onder de drempel → 2D-fallback
+      // Saldo is al gecontroleerd door de universele credit-check bovenin —
+      // hier alleen nog het geschatte gebruik vastleggen (geen stille fallback meer)
       const CREDITS_PER_KIE_SCENE = 75; // T2I (~5) + Kling I2V (~70)
-      const shieldThreshold = parseInt(process.env.CREDIT_SHIELD_THRESHOLD || '100', 10);
-      const { getCreditBalance } = require('./kieService');
-      const balance = await getCreditBalance();
-      if (balance !== null && balance < shieldThreshold && kieIndices.size > 0) {
-        const blocked = kieIndices.size;
-        console.warn(`[CreditShield ${jobId}] Saldo ${balance} < drempel ${shieldThreshold} — ${blocked} scène(s) naar 2D-fallback`);
-        kieIndices.clear();
-        updateJob(jobId, {
-          credit_shield_triggered: true,
-          credit_warning: `Weinig credits (saldo: ${balance}) — ${blocked} scène${blocked === 1 ? '' : 's'} worden in 2D-modus gerenderd`,
-          kie_balance: balance,
-        });
-      }
-
-      // Geschat kredietgebruik vastleggen zodat de gebruiker per job kan terugzien wat het kostte
       updateJob(jobId, {
         estimated_credits: kieIndices.size * CREDITS_PER_KIE_SCENE,
         credit_breakdown: `${kieIndices.size} scène${kieIndices.size === 1 ? '' : 's'} AI-beeld (~${kieIndices.size * CREDITS_PER_KIE_SCENE} credits), ${scenes.length - kieIndices.size} scène${scenes.length - kieIndices.size === 1 ? '' : 's'} 2D (gratis)`,
-        ...(balance !== null ? { kie_balance: balance } : {}),
       });
 
       const kieCount = kieIndices.size;
@@ -513,66 +549,30 @@ async function runAfterEditing(jobId, job) {
     }
 
     if (useKling) {
-      // Regisseur-modus: kostenraming vooraf (duurder dan ai-cinematic door
-      // character sheet + per-scène startframes) + Credit Shield
+      // Saldo is al gecontroleerd door de universele credit-check bovenin (vóór
+      // TTS). Hier alleen nog de stijl-specifieke kosten-breakdown vastleggen.
+      // De vroegere director-fail en illustrated-2D-fallback zijn vervangen door
+      // de expliciete 'insufficient_credits'-keuze — geen stille fallbacks meer.
       if (resolvedRenderStyle === 'director') {
-        const { getCreditBalance, CREDIT_COSTS } = require('./kieService');
+        const { CREDIT_COSTS } = require('./kieService');
         const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
         const vidScenes = scenes.filter(s => !SKIP.has(s.template));
-        // sheet 3×T2I + per scène 1×T2I startframe + Kling 2.6 i2v (70cr) voor
-        // ELKE scène — zelfde videomodel als 'simple', plus de premium-extra's,
-        // zodat Regisseur logisch duurder is dan Simpel.
-        // DIRECTOR_TEST_CHEAP=1: alles Seedance 480p (15cr) — enkel voor tests
         const cheap = process.env.DIRECTOR_TEST_CHEAP === '1';
-        const estCredits = 3 * CREDIT_COSTS.t2i_grok
-          + vidScenes.length * CREDIT_COSTS.t2i_grok
-          + vidScenes.length * (cheap ? CREDIT_COSTS.t2v_seedance480 : CREDIT_COSTS.i2v_kling);
-        const balance = await getCreditBalance();
-        if (balance !== null && balance < estCredits) {
-          updateJob(jobId, { status: 'failed', error: `Regisseur-modus vereist ~${estCredits} credits maar saldo is ${balance}. Vul kie.ai-credits aan of kies een goedkopere stijl.`, kie_balance: balance, estimated_credits: estCredits });
-          return;
-        }
         updateJob(jobId, {
-          estimated_credits: estCredits,
           credit_breakdown: cheap
             ? `Regisseur (TESTMODUS 480p): character sheet (~15cr) + ${vidScenes.length} startframes (~${vidScenes.length * 5}cr) + ${vidScenes.length}× Seedance 480p i2v (~${vidScenes.length * 15}cr)`
             : `Regisseur: character sheet (3 hoeken, ~15cr) + ${vidScenes.length} startframes (~${vidScenes.length * 5}cr) + ${vidScenes.length}× Kling 2.6 i2v (~${vidScenes.length * 70}cr)`,
-          ...(balance !== null ? { kie_balance: balance } : {}),
+        });
+      }
+      if (resolvedRenderStyle === 'illustrated') {
+        const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
+        const t2iScenes = scenes.filter(s => !SKIP.has(s.template)).length;
+        updateJob(jobId, {
+          credit_breakdown: `${t2iScenes} geïllustreerde beelden (~${t2iScenes * 5} credits, enkel T2I — geen I2V)`,
         });
       }
 
-      // Credit Shield + kostenraming voor illustrated (enkel T2I ≈ 5cr/scène)
-      const isIllustrated = resolvedRenderStyle === 'illustrated';
-      let illustratedShielded = false;
-      if (isIllustrated) {
-        const { getCreditBalance, CREDIT_COSTS } = require('./kieService');
-        const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
-        const t2iScenes = scenes.filter(s => !SKIP.has(s.template)).length;
-        const estCredits = t2iScenes * (CREDIT_COSTS.t2i_grok || 5);
-        const shieldThreshold = parseInt(process.env.CREDIT_SHIELD_THRESHOLD || '100', 10);
-        const balance = await getCreditBalance();
-        if (balance !== null && balance < Math.max(estCredits, shieldThreshold / 2)) {
-          illustratedShielded = true;
-          console.warn(`[CreditShield ${jobId}] Saldo ${balance} te laag voor illustrated (${estCredits}cr) — 2D-fallback`);
-          finalScenes = scenes.map(s => ({ ...s, background_video_url: null, background_image_url: null, template: 'text_focus_2d', kling_status: 'skipped' }));
-          updateJob(jobId, {
-            credit_shield_triggered: true,
-            credit_warning: `Weinig credits (saldo: ${balance}) — illustratie-scènes worden in 2D-modus gerenderd`,
-            kie_balance: balance,
-            estimated_credits: 0,
-            scenes: finalScenes,
-            progress: 75,
-          });
-        } else {
-          updateJob(jobId, {
-            estimated_credits: estCredits,
-            credit_breakdown: `${t2iScenes} geïllustreerde beelden (~${estCredits} credits, enkel T2I — geen I2V)`,
-            ...(balance !== null ? { kie_balance: balance } : {}),
-          });
-        }
-      }
-
-      if (!illustratedShielded) {
+      {
         // Auto-Kling via PIAPI (of T2I-only bij illustrated/ai-image)
         console.log(`[Pipeline ${jobId}] Stap 4: Kling video's genereren...`);
         scenes.forEach((s, i) => {

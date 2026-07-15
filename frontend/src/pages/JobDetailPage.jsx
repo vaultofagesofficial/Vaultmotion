@@ -479,6 +479,46 @@ export default function JobDetailPage() {
 
         {isWaitingForBg && <WaitingForBackgroundsBanner jobId={job.id} />}
 
+        {/* Onvoldoende credits: expliciete keuze — bijvullen of gratis verder met Stock */}
+        {job.status === 'insufficient_credits' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-dark-800 border border-dark-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                💳 {t('job.credits.title', 'Onvoldoende credits')}
+              </h2>
+              <p className="text-sm text-gray-300">
+                {t('job.credits.body', `Onvoldoende credits voor deze stijl (nodig: ~${job.credit_choice?.needed ?? job.estimated_credits}, beschikbaar: ${job.credit_choice?.balance ?? job.kie_balance}).`, { needed: job.credit_choice?.needed, balance: job.credit_choice?.balance })}
+              </p>
+              <div className="space-y-2">
+                <a
+                  href="https://kie.ai/billing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold transition-colors"
+                >
+                  💳 {t('job.credits.topup', 'Credits bijvullen op kie.ai')}
+                </a>
+                <button
+                  onClick={async () => { try { await axios.post(`/api/render/${job.id}/credit-choice`, { choice: 'retry' }); } catch (e) { alert(e.response?.data?.error || e.message); } }}
+                  className="w-full py-2.5 text-sm rounded-xl border border-dark-600 text-gray-300 hover:text-white hover:border-dark-500 transition-colors"
+                >
+                  🔄 {t('job.credits.retry', 'Ik heb bijgevuld — opnieuw proberen')}
+                </button>
+                <button
+                  onClick={async () => { try { await axios.post(`/api/render/${job.id}/credit-choice`, { choice: 'stock' }); } catch (e) { alert(e.response?.data?.error || e.message); } }}
+                  className="w-full py-2.5 text-sm rounded-xl font-semibold transition-colors"
+                  style={{ backgroundColor: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.4)', color: '#4ade80' }}
+                >
+                  🎬 {t('job.credits.stock', 'Gratis verder met Stock Footage (€0)')}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                {t('job.credits.note', 'Er is nog niets verbruikt — de render start pas na je keuze.')}
+              </p>
+            </div>
+          </div>
+        )}
+
         {job.status === 'failed' && job.error && (
           <div className="mt-3 text-sm text-red-400 bg-red-900/20 border border-red-700/50 rounded-lg p-3">
             ❌ {job.error}

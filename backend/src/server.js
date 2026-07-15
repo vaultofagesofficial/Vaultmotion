@@ -112,7 +112,7 @@ app.get('/api/capabilities', async (req, res) => {
   res.json({
     max_duration: 600,
     recommended_max: 300,
-    supported_styles: ['ai-cinematic', 'ai-image', '2d', 'simple', 'hybrid', 'illustrated', 'stock', 'director', 'cinematic_noir', 'documentary', 'social_media_fast', 'luxury'],
+    supported_styles: ['ai-cinematic', 'ai-image', 'simple', 'hybrid', 'stock', 'director', 'cinematic_noir', 'documentary', 'social_media_fast', 'luxury'], // 2d/illustrated: enkel nog interne fallback, niet kiesbaar
     illustration_styles: ['flat', 'storybook', 'motion'],
     supported_modes: ['epic', 'documentary', 'story'],
     hybrid_intensities: ['smart', 'low', 'medium', 'high'],

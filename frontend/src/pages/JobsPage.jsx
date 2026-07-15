@@ -11,6 +11,7 @@ const STATUS_CONFIG = {
   rendering:              { key: 'jobs.status.rendering',  textColor: '#d4a017', bgColor: 'rgba(212,160,23,0.12)',  icon: Loader2,      spin: true  },
   queued:                 { key: 'jobs.status.queued',     textColor: '#6b6b6b', bgColor: 'rgba(107,107,107,0.12)', icon: Loader2,      spin: false },
   completed:              { key: 'jobs.status.completed',  textColor: '#4ade80', bgColor: 'rgba(74,222,128,0.1)',   icon: CheckCircle2, spin: false },
+  insufficient_credits:   { key: 'jobs.status.credits',    textColor: '#fb923c', bgColor: 'rgba(251,146,60,0.12)',  icon: XCircle,      spin: false },
   failed:                 { key: 'jobs.status.failed',     textColor: '#e53e3e', bgColor: 'rgba(229,62,62,0.12)',   icon: XCircle,      spin: false },
 };
 
@@ -50,7 +51,7 @@ export default function JobsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const ACTIVE_STATUSES = ['analyzing', 'generating_backgrounds', 'storyboard_ready', 'rendering', 'queued', 'editing', 'generating_audio', 'waiting_for_backgrounds'];
+  const ACTIVE_STATUSES = ['analyzing', 'generating_backgrounds', 'storyboard_ready', 'rendering', 'queued', 'editing', 'generating_audio', 'waiting_for_backgrounds', 'insufficient_credits'];
   const filtered = jobs.filter(j => {
     const matchesSearch = j.title?.toLowerCase().includes(search.toLowerCase()) || j.id?.includes(search);
     const matchesStatus =

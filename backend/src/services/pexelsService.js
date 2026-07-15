@@ -22,10 +22,15 @@ if (!fs.existsSync(BACKGROUNDS_DIR)) {
  * letterlijke onderwerp-beschrijving, zie de visual_focus-letterlijkheid-fix),
  * met een template-gebaseerde fallback als visual_focus ontbreekt.
  */
-function buildSearchQuery(template, content, visualFocus) {
+function buildSearchQuery(template, content, visualFocus, stockQuery) {
+  // Voorkeur: de door Claude gegenereerde stock_query (2-4 concrete zoekwoorden
+  // afgestemd op wat er écht in stockbibliotheken bestaat). De visual_focus
+  // beschrijft het vaste AI-personage en levert bij stock-zoekopdrachten
+  // niet-matchende, generieke resultaten op ("engineer's copper-burned hands").
+  if (stockQuery && stockQuery.trim()) return stockQuery.trim().slice(0, 80);
+
   if (visualFocus && visualFocus.trim()) {
-    // Pexels zoekt beter op korte, concrete steekwoorden dan lange zinnen —
-    // pak de eerste 4-5 betekenisvolle woorden uit de visual_focus.
+    // Fallback: eerste 4-5 betekenisvolle woorden uit de visual_focus.
     const words = visualFocus.trim().split(/\s+/).slice(0, 5).join(' ');
     return words;
   }
@@ -125,6 +130,49 @@ async function downloadVideo(url, filename) {
 // (zelfde set als kieService.js's SKIP_KIE_TEMPLATES).
 const SKIP_TEMPLATES = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
 
+
+// ── Stock-video optimaliseren voor Remotion ──────────────────────────────────
+// Pexels/Pixabay-clips zijn vaak 30-60s en tientallen MB's; het decoderen
+// daarvan tijdens de Remotion-render veroorzaakte delayRender-timeouts op
+// Railway ("waiting for the page to render... timeout 123000ms"). We trimmen
+// elke clip naar de scèneduur (+1s marge) en herschalen naar 1080x1920 zodat
+// de render alleen kleine, decodeer-lichte assets ziet.
+function findFfmpeg() {
+  const glob = require('fs');
+  const base = path.resolve(__dirname, '../../node_modules/@remotion');
+  try {
+    for (const dir of glob.readdirSync(base)) {
+      if (!dir.startsWith('compositor-')) continue;
+      for (const bin of ['ffmpeg.exe', 'ffmpeg']) {
+        const p = path.join(base, dir, bin);
+        if (glob.existsSync(p)) return p;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+async function optimizeStockVideo(localPath, maxSeconds) {
+  const ffmpeg = findFfmpeg();
+  if (!ffmpeg) { console.warn('[Stock] ffmpeg niet gevonden — clip blijft ongemoeid'); return; }
+  const { execFile } = require('child_process');
+  const tmp = localPath + '.opt.mp4';
+  const dur = Math.max(3, Math.ceil(maxSeconds) + 1);
+  await new Promise((resolve, reject) => {
+    execFile(ffmpeg, [
+      '-y', '-i', localPath,
+      '-t', String(dur),
+      '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an',
+      tmp,
+    ], { timeout: 120000 }, (err) => err ? reject(err) : resolve());
+  });
+  const before = fs.statSync(localPath).size;
+  fs.renameSync(tmp, localPath);
+  const after = fs.statSync(localPath).size;
+  console.log(`[Stock] Geoptimaliseerd: ${path.basename(localPath)} ${Math.round(before/1024)}KB -> ${Math.round(after/1024)}KB (max ${dur}s)`);
+}
+
 async function fetchBackgroundsForScenes(scenes, jobId) {
   const results = [...scenes];
   const pixabay = require('./pixabayService');
@@ -146,7 +194,7 @@ async function fetchBackgroundsForScenes(scenes, jobId) {
       results[i] = { ...results[i], background_video_url: null };
       continue;
     }
-    const query = buildSearchQuery(scene.template, scene.content || {}, scene.visual_focus);
+    const query = buildSearchQuery(scene.template, scene.content || {}, scene.visual_focus, scene.stock_query);
 
     // Rotatie: kies per scène willekeurig 50/50 tussen Pexels en Pixabay;
     // bij geen resultaat probeert de andere bron het voordat we opgeven.
@@ -177,6 +225,9 @@ async function fetchBackgroundsForScenes(scenes, jobId) {
     try {
       const filename = `${jobId}_scene${i}_${found.source}${found.videoId}.mp4`;
       const localPath = await downloadVideo(found.url, filename);
+      try {
+        await optimizeStockVideo(localPath, (scene.duration_frames || 120) / 30);
+      } catch (e) { console.warn(`[Stock] Optimalisatie scène ${i + 1} mislukt (${e.message}) — originele clip gebruikt`); }
 
       // Geef zowel het lokale pad als een HTTP URL terug
       // Gebruik absolute URL zodat Remotion de video kan laden tijdens rendering

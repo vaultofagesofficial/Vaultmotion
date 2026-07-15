@@ -107,10 +107,8 @@ const FONT_SIZES = [
 const RENDER_STYLE_OPTIONS = [
   { value: 'ai-cinematic',      labelKey: 'studio.render_style.ai',       descKey: 'studio.render_style.ai_desc',       labelFb: '🎬 AI-cinematic', descFb: 'Kling AI video achtergronden' },
   { value: 'ai-image',          labelKey: 'studio.render_style.ai_image', descKey: 'studio.render_style.ai_image_desc', labelFb: '🖼️ AI-beeld',     descFb: 'Stilstaand AI-beeld + Ken Burns zoom' },
-  { value: '2d',                labelKey: 'studio.render_style.2d',       descKey: 'studio.render_style.2d_desc',       labelFb: '📐 2D-gratis',    descFb: 'Code-only, geen AI credits' },
   { value: 'simple',            labelKey: 'studio.render_style.simple',   descKey: 'studio.render_style.simple_desc',   labelFb: '🎯 Simpel',       descFb: 'T2I + I2V per scène, enkel ken_burns' },
   { value: 'hybrid',            labelKey: 'studio.render_style.hybrid',   descKey: 'studio.render_style.hybrid_desc',   labelFb: '⚡ Hybride',      descFb: 'Mix KIE + 2D op basis van kwaliteitsschuif' },
-  { value: 'illustrated',       labelKey: 'studio.render_style.illustrated', descKey: 'studio.render_style.illustrated_desc', labelFb: '🎨 Geïllustreerd', descFb: 'Stilstaande illustraties + Ken Burns — bijna gratis' },
   { value: 'stock',             labelKey: 'studio.render_style.stock',       descKey: 'studio.render_style.stock_desc',       labelFb: '📹 Stock Footage',  descFb: 'Gratis Pexels-stockvideo\'s per scène — €0' },
   { value: 'director',          labelKey: 'studio.render_style.director', descKey: 'studio.render_style.director_desc', labelFb: '🎬 Regisseur',    descFb: 'Premium: character sheet + regie per scène — maximale filmkwaliteit' },
   { value: 'cinematic_noir',    labelKey: 'studio.render_style.noir',     descKey: 'studio.render_style.noir_desc',     labelFb: '🎞️ Noir',        descFb: 'Zwart-wit hoog contrast, zware grain, intense shake' },
@@ -214,6 +212,7 @@ export default function StudioPage() {
   const [error,          setError]          = useState('');
   const [format,         setFormat]         = useState('narrative');
   const [recommendation, setRecommendation] = useState(null);
+  const [handoffThumbnail, setHandoffThumbnail] = useState(null); // thumbnail meegebracht uit VaultBoost
 
   // Studio-handoff vanuit VaultBoost: ?handoff=<id> → script/topic/titel prefillen.
   // Bewust GEEN render-start: de gebruiker kiest zelf stijl/duur/stem.
@@ -226,6 +225,7 @@ export default function StudioPage() {
         if (data.script) setScript(data.script);
         if (data.topic)  setTopic(data.topic);
         if (data.title)  setTitle(data.title);
+        if (data.thumbnail) setHandoffThumbnail(data.thumbnail);
         localStorage.setItem('studioMode', 'full');
         setStudioTab('full'); // volledig-tab zodat het scriptveld zichtbaar is
         // parameter uit de URL halen zodat verversen geen tweede fetch doet
@@ -392,6 +392,15 @@ export default function StudioPage() {
         format: mode === 'epic' ? 'narrative' : format,
         preview,
       });
+      // Thumbnail uit VaultBoost meteen aan de nieuwe job koppelen (bestaand endpoint)
+      if (handoffThumbnail?.image_url?.startsWith('data:')) {
+        try {
+          const blob = await (await fetch(handoffThumbnail.image_url)).blob();
+          const fd = new FormData();
+          fd.append('thumbnail', blob, 'vaultboost_thumbnail.jpg');
+          await axios.post(`/api/render/${data.job_id}/thumbnail`, fd);
+        } catch (e) { console.warn('Thumbnail koppelen mislukt:', e.message); }
+      }
       navigate(`/jobs/${data.job_id}`);
     } catch (e) {
       setError(e.response?.data?.error || 'Render starten mislukt');

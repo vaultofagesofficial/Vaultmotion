@@ -3,19 +3,24 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 
 const DURATIONS = [30, 60];
+// Modus = TOON (belichting/camera-taal/stijl van het script) — bepaalt nooit
+// de achtergrond-bron. Bron = waar de beelden vandaan komen (AI of gratis stock).
+// Elke toon is met elke bron te combineren (bv. Epic + Stock Footage).
 const MODES = [
-  { value: 'documentary', label: 'Documentary', style: 'documentaire', render_style: 'ai-cinematic' },
-  { value: 'epic',        label: '⚔️ Epic',      style: 'epic',         render_style: 'ai-cinematic' },
-  { value: 'story',       label: 'Story',        style: 'story',        render_style: 'ai-cinematic' },
-  { value: '2d',          label: '📐 2D',         style: 'documentaire', render_style: '2d'           },
-  { value: 'gaming',      label: '🎮 Gaming',     style: 'gaming',       render_style: 'ai-cinematic' },
-  { value: 'beauty',      label: '✨ Beauty',     style: 'beauty',       render_style: 'ai-cinematic' },
-  { value: 'finance',     label: '📈 Finance',    style: 'finance',      render_style: 'ai-cinematic' },
-  { value: 'sport',       label: '🏆 Sport',      style: 'sport',        render_style: 'ai-cinematic' },
-  { value: 'tech',        label: '🤖 Tech',       style: 'tech',         render_style: 'ai-cinematic' },
-  { value: 'hybrid',     label: '⚡ Hybride',    style: 'epic',         render_style: 'hybrid'       },
-  { value: 'illustrated', label: '🎨 Geïllustreerd', style: 'documentaire', render_style: 'illustrated' },
-  { value: 'stock',       label: '📹 Stock',          style: 'documentaire', render_style: 'stock' },
+  { value: 'documentary', label: 'Documentary', style: 'documentaire' },
+  { value: 'epic',        label: '⚔️ Epic',      style: 'epic'         },
+  { value: 'story',       label: 'Story',        style: 'story'        },
+  { value: 'gaming',      label: '🎮 Gaming',     style: 'gaming'       },
+  { value: 'beauty',      label: '✨ Beauty',     style: 'beauty'       },
+  { value: 'finance',     label: '📈 Finance',    style: 'finance'      },
+  { value: 'sport',       label: '🏆 Sport',      style: 'sport'        },
+  { value: 'tech',        label: '🤖 Tech',       style: 'tech'         },
+];
+
+const SOURCES = [
+  { value: 'ai-cinematic', label: '🎬 AI-video',   hint: '~800cr' },
+  { value: 'hybrid',       label: '⚡ Hybride',    hint: '~150cr' },
+  { value: 'stock',        label: '📹 Stock',      hint: '€0'     },
 ];
 
 export default function QuickStartPanel({ voices, onStart, onPreview }) {
@@ -23,6 +28,7 @@ export default function QuickStartPanel({ voices, onStart, onPreview }) {
   const [topic,    setTopic]    = useState('');
   const [duration, setDuration] = useState(60);
   const [mode,     setMode]     = useState('epic');
+  const [source,   setSource]   = useState('ai-cinematic');
   const [status,   setStatus]   = useState('idle');
   const [error,    setError]    = useState('');
 
@@ -45,10 +51,10 @@ export default function QuickStartPanel({ voices, onStart, onPreview }) {
     await handler({
       topic:        topicVal,
       title:        topicVal,
-      mode:             mode === '2d' || mode === 'hybrid' ? 'documentary' : mode,
+      mode,
       style:            modeObj.style,
-      render_style:     modeObj.render_style,
-      hybrid_intensity: modeObj.render_style === 'hybrid' ? 'low' : undefined,
+      render_style:     source,
+      hybrid_intensity: source === 'hybrid' ? 'low' : undefined,
       duration,
       voiceId,
       subtitleSettings: { enabled: true, fontSize: 'normaal', highlightColor: '#FFD700', position: 'onder', subtitleStyle: 'karaoke-box', wordsPerLine: 4 },
@@ -116,6 +122,27 @@ export default function QuickStartPanel({ voices, onStart, onPreview }) {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Bron: bepaalt de achtergrond-beelden, los van de gekozen toon */}
+      <div className="card">
+        <label className="heading-display text-xs mb-2 block">{t('quickstart.source.label', 'Beeldbron')}</label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {SOURCES.map(s => (
+            <button
+              key={s.value}
+              onClick={() => setSource(s.value)}
+              disabled={busy}
+              className="py-2 px-1 rounded-lg text-xs font-semibold transition-all border-2 min-w-0"
+              style={source === s.value
+                ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
+                : { backgroundColor: 'transparent', borderColor: '#374151', color: '#9ca3af' }}
+            >
+              <span className="block truncate">{s.label}</span>
+              <span className="block text-[10px] font-normal" style={{ color: s.hint === '€0' ? '#4ade80' : '#fbbf24' }}>{s.hint}</span>
+            </button>
+          ))}
         </div>
       </div>
 

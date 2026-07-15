@@ -99,6 +99,7 @@ router.get('/:jobId', (req, res) => {
       credit_breakdown:        job.credit_breakdown || null,
       credit_warning:          job.credit_warning || null,
       credit_shield_triggered: !!job.credit_shield_triggered,
+      credit_choice:           job.credit_choice || null,
       kie_balance:             job.kie_balance ?? null,
       partial_failure: job.partial_failure || 0,
       youtube_url: job.youtube_url || null,
@@ -313,6 +314,31 @@ router.put('/:jobId/scenes', (req, res) => {
 });
 
 // POST /api/render/:jobId/continue — Hervat pipeline na scène-bewerking
+// POST /api/render/:jobId/credit-choice — keuze bij onvoldoende credits:
+// 'stock' = gratis verder met Stock Footage; 'retry' = opnieuw checken na bijvullen
+router.post('/:jobId/credit-choice', async (req, res) => {
+  try {
+    const { choice } = req.body || {};
+    const job = getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job niet gevonden' });
+    if (job.status !== 'insufficient_credits') {
+      return res.status(409).json({ error: `Job heeft status '${job.status}', verwacht 'insufficient_credits'` });
+    }
+    if (choice === 'stock') {
+      updateJob(req.params.jobId, { render_style: 'stock', status: 'editing', credit_choice: null, credit_choice_resolution: 'stock' });
+    } else if (choice === 'retry') {
+      updateJob(req.params.jobId, { status: 'editing', credit_choice: null, credit_choice_resolution: 'retry' });
+    } else {
+      return res.status(400).json({ error: "choice moet 'stock' of 'retry' zijn" });
+    }
+    await continueFromEditing(req.params.jobId);
+    res.json({ ok: true, resumed_as: choice === 'stock' ? 'stock' : job.render_style });
+  } catch (err) {
+    console.error('[POST /credit-choice]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/:jobId/continue', async (req, res) => {
   try {
     const job = getJob(req.params.jobId);
