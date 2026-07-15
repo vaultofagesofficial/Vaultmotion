@@ -995,7 +995,16 @@ async function renderWithRemotion(jobId, job, scenes) {
       // video zonder de bestandsgrootte onredelijk te vergroten (Submagic-achtige
       // "glitchy compressed" klacht voorkomen)
       pixelFormat: 'yuv420p', crf: 18, browserExecutable, chromeMode,
-      timeoutInMilliseconds: 120000, // ruime marge voor het laden van video-assets
+      // Railway-container heeft beperkt RAM/CPU: 8 gelijktijdige OffthreadVideo's
+      // met default concurrency (cores/2) veroorzaakten page-render-timeouts rond
+      // frame ~590 óók met geoptimaliseerde (1-2MB) clips. Eén render-thread +
+      // begrensde videocache houdt Chromium binnen het geheugen; lokaal blijft
+      // de default gelden. Timeout ruimer omdat 1 thread trager per frame is.
+      ...(process.env.RAILWAY_ENVIRONMENT ? {
+        concurrency: parseInt(process.env.RENDER_CONCURRENCY || '1', 10),
+        offthreadVideoCacheSizeInBytes: 512 * 1024 * 1024,
+      } : {}),
+      timeoutInMilliseconds: 240000, // ruime marge voor het laden van video-assets
       onProgress: ({ progress }) => {
         if (Math.round(progress * 100) % 10 === 0) {
           console.log(`[RenderService] Render voortgang: ${Math.round(progress * 100)}%`);
