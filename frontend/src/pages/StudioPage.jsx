@@ -219,7 +219,21 @@ export default function StudioPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const handoffId = params.get('handoff');
-    if (!handoffId) return;
+
+    // ?style=<id> — DNA-afgeleide suggestie uit VaultBoost. Enkel voorinstellen
+    // als het een geldige render_style is (nooit een onbekende waarde forceren);
+    // blijft een gewone dropdown, de gebruiker kan altijd manueel wijzigen.
+    const styleParam = params.get('style');
+    if (styleParam && RENDER_STYLE_OPTIONS.some(o => o.value === styleParam)) {
+      setRenderStyle(styleParam);
+      localStorage.setItem('studioMode', 'full');
+      setStudioTab('full');
+    }
+
+    if (!handoffId) {
+      if (styleParam) window.history.replaceState({}, '', '/studio'); // URL opschonen
+      return;
+    }
     axios.get(`/api/script/handoff/${handoffId}`)
       .then(({ data }) => {
         if (data.script) setScript(data.script);
@@ -228,7 +242,7 @@ export default function StudioPage() {
         if (data.thumbnail) setHandoffThumbnail(data.thumbnail);
         localStorage.setItem('studioMode', 'full');
         setStudioTab('full'); // volledig-tab zodat het scriptveld zichtbaar is
-        // parameter uit de URL halen zodat verversen geen tweede fetch doet
+        // parameters uit de URL halen zodat verversen geen tweede fetch doet
         window.history.replaceState({}, '', '/studio');
       })
       .catch(() => setError('Script-overdracht vanuit VaultBoost niet gevonden of verlopen'));
