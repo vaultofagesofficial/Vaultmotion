@@ -821,6 +821,25 @@ function realignScenesToTimings(scenes, timings, fps) {
 
 // ── Remotion render ─────────────────────────────────────────────────────────
 
+// ── Globale render-serialisatie (laag 3-fix) ────────────────────────────────
+// Zonder wachtrij startte elke render-job meteen zijn eigen Chromium; twee
+// gelijktijdige renders putten samen het beperkte container-RAM uit → de
+// tweede (en soms de eerste) faalt met een setFrame-/delayRender-timeout. Dit
+// verklaarde de INTERMITTENTE stock-fouten (enkel bij overlappende renders).
+// FIFO-lock zodat er procesbreed nooit meer dan één Remotion-render tegelijk
+// draait; wachtende jobs blijven netjes in de rij (status 'queued').
+let _renderChain = Promise.resolve();
+let _renderBusy = false;
+function withRenderLock(taskFn) {
+  const run = _renderChain.then(async () => {
+    _renderBusy = true;
+    try { return await taskFn(); }
+    finally { _renderBusy = false; }
+  });
+  _renderChain = run.then(() => {}, () => {}); // keten doorlaten, ook na fout
+  return run;
+}
+
 async function renderWithRemotion(jobId, job, scenes) {
   const outputFile  = path.join(OUTPUTS_DIR, `${jobId}.mp4`);
   const remotionDir = path.resolve(__dirname, '../../../remotion');
@@ -977,7 +996,16 @@ async function renderWithRemotion(jobId, job, scenes) {
     }
     return { browserExecutable: undefined, chromeMode: 'headless-shell' };
   })();
+  // Als er al een render bezig is, markeer deze job zichtbaar als 'queued'
+  // zodat de UI toont dat hij wacht (niet vastzit) tot de vorige klaar is.
+  if (_renderBusy) {
+    console.log(`[RenderService] Render bezig — job ${jobId} in wachtrij...`);
+    updateJob(jobId, { status: 'queued', progress: getJob(jobId)?.progress || 80 });
+  }
+
   let composition;
+  await withRenderLock(async () => {
+  updateJob(jobId, { status: 'rendering' });
   try {
     composition = await selectComposition({ serveUrl: bundled, id: 'VaultMotionVideo', inputProps, browserExecutable, chromeMode, timeoutInMilliseconds: 120000 });
     console.log(`[RenderService] Compositie: ${composition.durationInFrames} frames, ${composition.width}x${composition.height}`);
@@ -1000,7 +1028,11 @@ async function renderWithRemotion(jobId, job, scenes) {
       // frame ~590 óók met geoptimaliseerde (1-2MB) clips. Eén render-thread +
       // begrensde videocache houdt Chromium binnen het geheugen; lokaal blijft
       // de default gelden. Timeout ruimer omdat 1 thread trager per frame is.
-      ...(process.env.RAILWAY_ENVIRONMENT ? {
+      // Robuuste detectie: Railway heeft de env-var-naam in het verleden
+      // gewijzigd; check meerdere markers + een expliciete override, zodat de
+      // geheugenbeperking niet stil uitvalt als één naam verdwijnt.
+      ...((process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME
+        || process.env.RAILWAY_PROJECT_ID || process.env.RENDER_CONCURRENCY) ? {
         concurrency: parseInt(process.env.RENDER_CONCURRENCY || '1', 10),
         offthreadVideoCacheSizeInBytes: 512 * 1024 * 1024,
       } : {}),
@@ -1015,6 +1047,7 @@ async function renderWithRemotion(jobId, job, scenes) {
     console.error('[RenderService] ❌ renderMedia mislukt:\n', renderErr.stack || renderErr.message);
     throw new Error(`Remotion renderMedia mislukt: ${renderErr.message}`);
   }
+  }); // ── einde render-lock (Chromium exclusief) ──────────────────────────────
 
   const fileSize = fs.existsSync(outputFile) ? fs.statSync(outputFile).size : 0;
   if (fileSize < 1000) {
