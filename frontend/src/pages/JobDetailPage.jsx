@@ -553,8 +553,8 @@ export default function JobDetailPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
           <h2 className="font-semibold text-white mb-3 flex items-center gap-2">
             <Layers size={15} />
             {t('job.scenes_heading', `Scènes (${job.scenes?.length || 0})`, { count: job.scenes?.length || 0 })}
