@@ -121,9 +121,7 @@ const RENDER_STYLE_OPTIONS = [
 const COST_MATRIX = {
   'ai-cinematic':      { credits: '~800',  time: '~15-25 min', stars: 5, advice: 'Voor je allerbeste video\'s' },
   'ai-image':          { credits: '~200',  time: '~8-12 min',  stars: 3, advice: 'Goede middenweg met AI-beelden' },
-  '2d':                { credits: '0',     time: '~3-5 min',   stars: 2, advice: 'Ideaal voor dagelijkse content, gratis' },
   'simple':            { credits: '~600',  time: '~12-20 min', stars: 4, advice: 'Consistente AI-look per scène' },
-  'illustrated':       { credits: '~40',  time: '~5-8 min',   stars: 3, advice: 'Geïllustreerde explainer-stijl — bijna gratis' },
   'stock':             { credits: '0',    time: '~3-6 min',   stars: 3, advice: '€0 · echte stockvideo\'s van Pexels' },
   'director':          { credits: '~700-950', time: '~15-30 min', stars: 5, advice: '⚠️ Regisseur-modus kost aanzienlijk meer credits (character sheet + regie-startframe + Kling per scène) voor maximale filmkwaliteit. Aanbevolen voor je belangrijkste video\'s, niet voor dagelijkse content.' },
   'hybrid:smart':      { credits: 'variabel', time: '~6-16 min', stars: 4, advice: 'Claude kiest per scène — alleen AI waar het écht impact heeft' },
@@ -558,33 +556,6 @@ export default function StudioPage() {
               >
                 <span>{opt.label}</span>
                 <span className="text-xs mt-0.5" style={{ color: aiImageStyle === opt.value ? '#fbbf24' : '#4b5563' }}>{opt.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ILLUSTRATIE-SUBSTIJL */}
-      {renderStyle === 'illustrated' && (
-        <div className="mb-4 p-3 rounded-xl border border-dark-700 bg-dark-800">
-          <p className="text-xs text-gray-400 mb-2 font-semibold">{t('studio.illustrated.label', 'Illustratie-stijl — welke look wil je?')}</p>
-          <div className="flex gap-2">
-            {[
-              { value: 'flat',      label: '🟦 Flat Design',      desc: 'Vlakke vormen, felle kleuren' },
-              { value: 'storybook', label: '📖 Storybook',        desc: 'Zachte aquarel, prentenboek' },
-              { value: 'motion',    label: '🔷 Motion Graphics',  desc: 'Geometrisch, corporate explainer' },
-            ].map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setIllustrationStyle(opt.value)}
-                title={opt.desc}
-                className="flex-1 flex flex-col items-center py-2 px-1 rounded-lg text-xs font-semibold transition-all border-2"
-                style={illustrationStyle === opt.value
-                  ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
-                  : { backgroundColor: 'transparent', borderColor: '#374151', color: '#6b7280' }}
-              >
-                <span>{opt.label}</span>
-                <span className="text-xs mt-0.5" style={{ color: illustrationStyle === opt.value ? '#fbbf24' : '#4b5563' }}>{opt.desc}</span>
               </button>
             ))}
           </div>
