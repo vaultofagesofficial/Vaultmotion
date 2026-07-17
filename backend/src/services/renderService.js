@@ -99,7 +99,7 @@ const VISUAL_PRESETS = {
   luxury:            { base: '2d',     color_theme: 'luxury',  pacing: 'slow',   vfx: { grainIntensity: 0.5, shakeIntensity: 0 } },
 };
 
-async function startRenderJob({ script, title, style, mode, duration, workspace_id, subtitleSettings, voiceKey, vaultboost_meta, render_style, format, adaptive_strategy, preview, hybrid_intensity, illustration_style, color_theme }) {
+async function startRenderJob({ script, title, style, mode, duration, workspace_id, subtitleSettings, voiceKey, vaultboost_meta, render_style, format, adaptive_strategy, preview, hybrid_intensity, illustration_style, ai_image_style, color_theme }) {
   const jobId = uuidv4();
   const resolvedMode = mode || (style === 'epic' ? 'epic' : 'documentary');
 
@@ -128,6 +128,7 @@ async function startRenderJob({ script, title, style, mode, duration, workspace_
     ...(visualPreset ? { color_theme: VISUAL_PRESETS[visualPreset].color_theme } : {}),
     hybrid_intensity: hybrid_intensity || 'low',
     illustration_style: illustration_style || 'flat',
+    ai_image_style: ai_image_style || '3d', // sub-keuze binnen ai-image (2D/3D)
     ...(color_theme ? { color_theme } : {}),
     adaptive_strategy: adaptive_strategy !== false,
     voice_key:   voiceKey || 'nl_female',
@@ -595,7 +596,8 @@ async function runAfterEditing(jobId, job) {
           job.mode || 'epic',
           job.style_anchor || '',
           job.render_style || 'ai-cinematic',
-          getJob(jobId)?.illustration_style || job.illustration_style || 'flat'
+          getJob(jobId)?.illustration_style || job.illustration_style || 'flat',
+          getJob(jobId)?.ai_image_style || job.ai_image_style || '3d'
         );
         finalScenes = kieResult.scenes;
         if (kieResult.anchorImageUrl) {
@@ -677,6 +679,7 @@ async function retryFailedScenes(jobId) {
 }
 
 async function runRetry(jobId, scenes, mode) {
+  const rjob = getJob(jobId) || {};
   const finalScenes = await generateKlingVideosForScenes(
     scenes, jobId, OUTPUTS_DIR,
     (sceneIdx, sceneUpdates) => {
@@ -687,7 +690,11 @@ async function runRetry(jobId, scenes, mode) {
         saveJobs(jobs);
       }
     },
-    mode
+    mode,
+    rjob.style_anchor || '',
+    rjob.render_style || 'ai-cinematic',
+    rjob.illustration_style || 'flat',
+    rjob.ai_image_style || '3d'
   );
   updateJob(jobId, { scenes: finalScenes, status: 'rendering', progress: 80 });
   const outputFile = await renderWithRemotion(jobId, getJob(jobId), finalScenes);

@@ -417,13 +417,27 @@ const ILLUSTRATION_STYLES = {
   },
 };
 
+// Sub-keuze binnen render_style='ai-image': 2D of 3D/fotorealistisch. Zelfde
+// renderpath en credits (T2I per scène) — enkel een prompt-suffix verschilt.
+// '3d' = bestaand gedrag (fotorealistisch); '2d' = vlakke illustratie.
+const AI_IMAGE_STYLES = {
+  '3d': {
+    label: '3D / Fotorealistisch',
+    suffix: 'photorealistic, realistic 3D depth and lighting, cinematic textures, natural depth of field',
+  },
+  '2d': {
+    label: '2D Illustratie',
+    suffix: 'flat 2D illustration, clean vector art style, bold shapes and outlines, stylized color palette, no photorealism',
+  },
+};
+
 // Templates die een ankerbeeld gebruiken (image-to-video via Kling)
 const ANCHOR_TEMPLATES = new Set(['cinematic_title', 'outro_cta']);
 
 // Templates die code-only zijn — geen kie.ai aanroep nodig
 const SKIP_KIE_TEMPLATES = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
 
-async function generateKlingVideosForScenes(scenes, jobId, outputsDir, onSceneUpdate, mode = 'epic', styleAnchor = '', renderStyle = 'ai-cinematic', illustrationStyle = 'flat') {
+async function generateKlingVideosForScenes(scenes, jobId, outputsDir, onSceneUpdate, mode = 'epic', styleAnchor = '', renderStyle = 'ai-cinematic', illustrationStyle = 'flat', aiImageStyle = '3d') {
   if (renderStyle === '2d') {
     console.log(`[KIE] render_style=2d — kie.ai overgeslagen voor job ${jobId}`);
     return { scenes, anchorImageUrl: null };
@@ -485,7 +499,8 @@ async function generateKlingVideosForScenes(scenes, jobId, outputsDir, onSceneUp
         return;
       }
 
-      const prompt = buildKlingPrompt(scene, mode, styleAnchor);
+      const aiSub = AI_IMAGE_STYLES[aiImageStyle] || AI_IMAGE_STYLES['3d'];
+      const prompt = `${buildKlingPrompt(scene, mode, styleAnchor)}, ${aiSub.suffix}`;
       onSceneUpdate(idx, { kling_status: 'generating', kling_prompt: prompt, kling_model: 'qwen2/text-to-image', kling_progress: 5 });
 
       try {
@@ -807,4 +822,4 @@ async function generateSimpleScene(visualFocus, styleAnchor, jobId, outputsDir, 
   throw new Error(`SimpleScene I2V timeout (scène ${sceneIdx})`);
 }
 
-module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateCharacterSheet, getMultiRefSupport, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus, getCreditBalance, CREDIT_COSTS, ILLUSTRATION_STYLES };
+module.exports = { generateKlingVideosForScenes, generateSimpleScene, generateAnchorImage, generateCharacterSheet, getMultiRefSupport, generateImageForScene, buildKlingPrompt, selectVideoModel, createVideoTask, checkVideoStatus, getCreditBalance, CREDIT_COSTS, ILLUSTRATION_STYLES, AI_IMAGE_STYLES };

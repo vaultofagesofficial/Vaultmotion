@@ -196,6 +196,7 @@ export default function StudioPage() {
   const [renderStyle,    setRenderStyle]    = useState('ai-cinematic');
   const [hybridIntensity, setHybridIntensity] = useState('low');
   const [illustrationStyle, setIllustrationStyle] = useState('flat');
+  const [aiImageStyle, setAiImageStyle] = useState('3d'); // sub-keuze binnen ai-image: 2D of 3D
   const [script,    setScript]    = useState('');
   const [title,     setTitle]     = useState('');
   const [topic,     setTopic]     = useState('');
@@ -403,6 +404,7 @@ export default function StudioPage() {
         render_style:     renderStyle,
         hybrid_intensity: hybridIntensity,
         illustration_style: illustrationStyle,
+        ai_image_style: aiImageStyle,
         format: mode === 'epic' ? 'narrative' : format,
         preview,
       });
@@ -530,6 +532,32 @@ export default function StudioPage() {
               >
                 <span>{opt.label}</span>
                 <span className="text-xs mt-0.5" style={{ color: hybridIntensity === opt.value ? '#fbbf24' : '#4b5563' }}>{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI-BEELD SUBSTIJL — 2D of 3D/fotorealistisch (zelfde patroon als Hybride) */}
+      {renderStyle === 'ai-image' && (
+        <div className="mb-4 p-3 rounded-xl border border-dark-700 bg-dark-800">
+          <p className="text-xs text-gray-400 mb-2 font-semibold">{t('studio.ai_image.label', 'Beeldstijl — 2D of 3D?')}</p>
+          <div className="flex gap-2">
+            {[
+              { value: '3d', label: '🧊 3D / Fotorealistisch', desc: 'Realistische diepte & textuur' },
+              { value: '2d', label: '🟦 2D Illustratie',       desc: 'Vlakke vector-look, geen fotorealisme' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setAiImageStyle(opt.value)}
+                title={opt.desc}
+                className="flex-1 flex flex-col items-center py-2 px-1 rounded-lg text-xs font-semibold transition-all border-2"
+                style={aiImageStyle === opt.value
+                  ? { backgroundColor: '#1a1a1a', borderColor: '#e53e3e', color: '#fff' }
+                  : { backgroundColor: 'transparent', borderColor: '#374151', color: '#6b7280' }}
+              >
+                <span>{opt.label}</span>
+                <span className="text-xs mt-0.5" style={{ color: aiImageStyle === opt.value ? '#fbbf24' : '#4b5563' }}>{opt.desc}</span>
               </button>
             ))}
           </div>
