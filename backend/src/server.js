@@ -160,24 +160,34 @@ function resetStuckPollingScenes() {
     const jobs = JSON.parse(fs.readFileSync(jobsFile, 'utf8'));
     let resetCount = 0;
     let jobCount   = 0;
+    // Transiente pipeline-statussen: na een crash/herstart kan niets deze jobs
+    // nog afmaken (render-lock en wachtrij zijn in-memory). Wachtstatussen die
+    // op de GEBRUIKER wachten ('editing', 'insufficient_credits') blijven staan.
+    const STUCK_STATUSES = new Set([
+      'pending', 'analyzing', 'generating_audio', 'generating_backgrounds',
+      'waiting_for_backgrounds', 'rendering', 'queued',
+    ]);
     for (const job of Object.values(jobs)) {
-      if (job.status !== 'generating_backgrounds') continue;
-      let anyStuck = false;
+      if (!STUCK_STATUSES.has(job.status)) continue;
+      const oldStatus = job.status;
+      let sceneResets = 0;
       job.scenes = (job.scenes || []).map(s => {
         if (s.kling_status === 'polling' || s.kling_status === 'generating') {
-          anyStuck = true;
-          resetCount++;
+          sceneResets++;
           return { ...s, kling_status: 'failed', kling_error: 'Server herstart tijdens generatie — klik Opnieuw proberen' };
         }
         return s;
       });
-      if (anyStuck) { job.status = 'failed'; jobCount++; }
+      job.status = 'failed';
+      job.error  = `Server herstart tijdens verwerking (fase: ${oldStatus}) — start de render opnieuw, er is niets extra verbruikt sinds de onderbreking`;
+      resetCount += Math.max(1, sceneResets);
+      jobCount++;
     }
-    if (resetCount > 0) {
+    if (jobCount > 0) {
       fs.writeFileSync(jobsFile, JSON.stringify(jobs, null, 2));
-      console.log(`♻️  [Startup] ${resetCount} scène(s) in ${jobCount} job(s) gereset naar 'failed' → klik "Opnieuw proberen"`);
+      console.log(`♻️  [Startup] ${jobCount} vastgelopen job(s) (${resetCount} scène(s)) → 'failed' met duidelijke herstart-melding`);
     } else {
-      console.log('♻️  [Startup] Geen vastgelopen scènes gevonden');
+      console.log('♻️  [Startup] Geen vastgelopen jobs gevonden');
     }
   } catch (e) {
     console.warn('⚠️  [Startup] Reset stuck scenes mislukt:', e.message);
