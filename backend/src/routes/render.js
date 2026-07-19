@@ -43,6 +43,45 @@ router.post('/:jobId/share', (req, res) => {
   }
 });
 
+// POST /api/render/:jobId/share-social — deel een afgewerkte render naar
+// TikTok/Instagram via VaultBoost's Postiz-proxy (VM heeft zelf geen
+// Postiz-credentials; VB wel). Auth richting VB: gedeeld VAULTMOTION_API_KEY.
+// Faalt met de ECHTE reden (bv. "geen gekoppelde kanalen") — nooit stil.
+router.post('/:jobId/share-social', async (req, res) => {
+  try {
+    const job = getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job niet gevonden' });
+    if (job.status !== 'completed' || !job.video_url) {
+      return res.status(400).json({ error: 'Deze job heeft nog geen afgewerkte video' });
+    }
+    const sharedKey = process.env.VAULTMOTION_API_KEY;
+    if (!sharedKey) {
+      return res.status(503).json({ error: 'Delen niet geconfigureerd — zet VAULTMOTION_API_KEY op VaultMotion én VaultBoost (zelfde waarde).' });
+    }
+
+    const { SERVER_BASE_URL } = require('../paths');
+    const vaultboost = process.env.VAULTBOOST_URL || 'http://localhost:3001';
+    const videoUrl = job.video_url.startsWith('http') ? job.video_url : `${SERVER_BASE_URL}${job.video_url}`;
+    const { platforms, caption } = req.body || {};
+
+    const axios = require('axios');
+    const vbRes = await axios.post(
+      `${vaultboost}/api/publish/postiz/from-vaultmotion`,
+      {
+        video_url: videoUrl,
+        caption: (caption || job.title || '').slice(0, 2200),
+        platforms: Array.isArray(platforms) && platforms.length ? platforms : ['instagram', 'tiktok'],
+      },
+      { headers: { 'x-api-key': sharedKey }, timeout: 300000 },
+    );
+    res.json({ ok: true, ...vbRes.data });
+  } catch (err) {
+    const detail = err.response?.data?.error || err.message;
+    console.error('[share-social]', detail);
+    res.status(502).json({ error: `Delen mislukt: ${detail}` });
+  }
+});
+
 // POST /api/render — Start een nieuwe render job (VaultBoost koppeling)
 router.post('/', async (req, res) => {
   try {

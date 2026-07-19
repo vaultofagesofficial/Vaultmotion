@@ -258,6 +258,9 @@ export default function JobDetailPage() {
   const [thumbnail, setThumbnail]   = useState({ uploading: false, url: null, error: null });
   const [sharing, setSharing]       = useState(false);
   const [shareUrl, setShareUrl]     = useState(null);
+  // Deel naar TikTok/Instagram via VaultBoost's Postiz-proxy
+  const [socialSharing, setSocialSharing] = useState(false);
+  const [socialResult, setSocialResult]   = useState(null); // { ok, message }
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareJobs, setCompareJobs] = useState([]);
   const [compareWith, setCompareWith] = useState(null);
@@ -286,6 +289,20 @@ export default function JobDetailPage() {
       console.error('[share]', e.message);
     }
     setSharing(false);
+  }
+
+  async function handleShareSocial() {
+    setSocialSharing(true);
+    setSocialResult(null);
+    try {
+      const { data } = await axios.post(`/api/render/${jobId}/share-social`);
+      const naar = (data.published_to || []).map(p => p.platform).join(' + ') || 'TikTok/Instagram';
+      setSocialResult({ ok: true, message: t('job.social.success', `Doorgestuurd naar ${naar} via Postiz`, { naar }) });
+    } catch (e) {
+      // Toon de ECHTE reden (bv. "geen gekoppelde Postiz-kanalen"), nooit enkel "mislukt"
+      setSocialResult({ ok: false, message: e.response?.data?.error || e.message });
+    }
+    setSocialSharing(false);
   }
 
   async function openCompare() {
@@ -716,6 +733,22 @@ export default function JobDetailPage() {
                   ⚖️ {t('job.btn.compare', 'Vergelijk')}
                 </button>
               </div>
+
+              {/* TikTok/Instagram via Postiz (VaultBoost-proxy) */}
+              <button
+                onClick={handleShareSocial}
+                disabled={socialSharing}
+                className="btn-secondary w-full flex items-center justify-center gap-1.5 text-xs py-2 mt-2"
+              >
+                {socialSharing ? '⏳' : '📱'} {socialSharing
+                  ? t('job.btn.social_busy', 'Video doorsturen...')
+                  : t('job.btn.social', 'Deel naar TikTok/Instagram')}
+              </button>
+              {socialResult && (
+                <p className="text-[11px] mt-1.5" style={{ color: socialResult.ok ? '#4ade80' : '#f87171' }}>
+                  {socialResult.ok ? '✅' : '⚠️'} {socialResult.message}
+                </p>
+              )}
               {shareUrl && (
                 <p className="text-[10px] mt-1.5 break-all" style={{ color: '#6b6b6b' }}>
                   {t('job.share.hint', 'Link gekopieerd — 24 uur geldig:')} <span style={{ color: '#d4a017' }}>{shareUrl}</span>
