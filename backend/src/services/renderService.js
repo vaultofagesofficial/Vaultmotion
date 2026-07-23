@@ -12,6 +12,7 @@ const { generateVoiceOver }    = require('./elevenLabsService');
 const { generateVoiceOverGemini } = require('./geminiTtsService');
 const { getMusicUrl }          = require('./musicService');
 const { generateKlingVideosForScenes, generateSimpleScene } = require('./kieService');
+const { estimateJobCredits }   = require('./creditEstimator');
 
 const { OUTPUTS_DIR, JOBS_FILE, SERVER_BASE_URL } = require('../paths');
 console.log(`[renderService] OUTPUTS_DIR: ${OUTPUTS_DIR}`);
@@ -221,36 +222,9 @@ async function continueFromEditing(jobId) {
   });
 }
 
-// ── Universele creditraming per stijl (conservatief: liever over- dan onderschatten) ──
-function estimateJobCredits(scenes, renderStyle, hybridIntensity) {
-  const SKIP = new Set(['fact_animation', 'stats_counter', 'data_comparison']);
-  const vid = scenes.filter(s => !SKIP.has(s.template) && !s.skip_kie);
-  switch (renderStyle) {
-    case 'stock':
-    case '2d':
-      return 0;
-    case 'ai-image':
-    case 'illustrated':
-      return vid.length * 5;                     // enkel T2I per scène
-    case 'simple':
-      return vid.length * 75;                    // T2I (5) + Kling I2V (70)
-    case 'director':
-      return 15 + vid.length * 75;               // character sheet + T2I + Kling per scène
-    case 'hybrid': {
-      const n = scenes.length;
-      const kieN = hybridIntensity === 'high'   ? n
-                 : hybridIntensity === 'medium' ? Math.min(n, Math.ceil(n / 2) + 2)
-                 : hybridIntensity === 'smart'  ? Math.min(n, scenes.filter(s => s.needs_ai && !s.skip_kie).length + 2)
-                 : 2;                            // low: enkel titel + outro
-      return kieN * 75;
-    }
-    default: {
-      // ai-cinematic + visuele presets (noir/documentary/social/luxury)
-      const titles = vid.filter(s => ['cinematic_title', 'outro_cta'].includes(s.template)).length;
-      return 5 + titles * 70 + Math.max(0, vid.length - titles) * 30; // anker + Kling-titels + Seedance-rest
-    }
-  }
-}
+// ── Universele creditraming per stijl ──────────────────────────────────────
+// De pure raming leeft in creditEstimator.js (side-effect-vrij, testbaar zonder
+// de volledige render-pipeline). Hier alleen gebruikt door de credit-gate.
 
 async function runAfterEditing(jobId, job) {
   try {
